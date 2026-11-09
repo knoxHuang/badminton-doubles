@@ -24,7 +24,7 @@
         <details id="source-details" hidden><summary>查看识别说明</summary><p id="parse-details" class="hint"></p></details>
         <div id="roster-section" hidden><div class="row space roster-heading"><h3>参赛者 <span id="people-count" class="count">0</span></h3><button id="add" class="text-button">＋ 添加</button></div><p class="hint">取消「参与」可移出后续比赛；同名者请修改显示名。已有完成轮次时，请在此增删名单，接龙原文将锁定。</p><div id="roster"></div></div>
         <div class="section-title settings-title"><span class="step">02</span><h2>安排这次活动</h2></div>
-        <div class="fields"><label class="wide">活动名称<input id="title" maxlength="80" value="羽毛球双打"></label><label>日期（选填）<input id="date" type="date"></label><label>时间（选填）<input id="time" maxlength="60" placeholder="周二 19:00–21:00"></label><label class="wide">地点（选填）<input id="location" maxlength="100" placeholder="球馆名称"></label><label>可用场地数<input id="courts" type="number" min="1" max="16" value="2"></label><label>总轮数<input id="rounds" type="number" min="1" max="100" value="7"></label><label class="wide">群通知备注（选填）<input id="notes" maxlength="200" placeholder="请按轮次上场，以现场通知为准。"></label></div>
+        <div class="fields"><label class="wide">活动名称<input id="title" maxlength="80" value="羽毛球双打"></label><label>日期（选填）<input id="date" type="date"></label><label>时间（选填）<input id="time" maxlength="60" placeholder="周二 19:00–21:00"></label><label class="wide">地点（选填）<input id="location" maxlength="100" placeholder="球馆名称"></label><label>可用场地数<input id="courts" type="number" min="1" max="16" value="2"></label><label>排轮方式<select id="roundMode"><option value="auto">按活动时长估算</option><option value="manual">手动设置轮数</option></select></label><label>活动时长（分钟）<input id="durationMinutes" type="number" min="5" max="720" value="120"></label><label>平均每场（分钟）<input id="matchMinutes" type="number" min="3" max="120" value="15"></label><label>预排总轮数<input id="rounds" type="number" min="1" max="500" value="12"></label><p id="round-estimate" class="wide estimate-note" aria-live="polite"></p><label class="wide">群通知备注（选填）<input id="notes" maxlength="200" placeholder="请按轮次上场，以现场通知为准。"></label></div>
         <p class="mode-note">自由双打轮转 · 一次生成多轮<br>优先均衡上场次数，再减少重复搭档和对手。</p>
         <button id="generate" class="primary full">生成多轮赛程 <span aria-hidden="true">↗</span></button>
       </section>
@@ -34,7 +34,7 @@
         <div id="schedule-section" hidden>
           <div id="stale" class="warning" hidden>名单或设置已变更。请重新生成后，再复制群通知。</div>
           <div class="summary-strip"><span><strong id="stat-people">0</strong> 人参与</span><span><strong id="stat-rounds">0</strong> 轮比赛</span><span><strong id="stat-matches">0</strong> 场对阵</span></div>
-          <label class="round-filter">查看轮次<select id="view-round"><option value="all">全部轮次</option></select></label><div id="schedule"></div>
+          <label class="round-filter">查看轮次<select id="view-round"><option value="all">全部轮次</option></select></label><div id="schedule"></div><button id="append-rounds" class="secondary full">再补 4 轮 · 保留现有对阵</button>
           <details class="stats"><summary>查看上场次数与搭档重复</summary><p id="quality" class="hint"></p><div id="stats-list"></div></details>
           <div class="share"><div class="row space"><h3>带到微信群</h3><label class="scope-label">复制范围<select id="scope"><option value="all">完整赛程</option></select></label></div><label for="output" class="sr-only">微信群通知文本</label><textarea id="output" readonly rows="10" spellcheck="false"></textarea><button id="copy" class="primary full">复制群通知</button><p class="hint">复制后粘贴到微信群发送。</p></div>
         </div>

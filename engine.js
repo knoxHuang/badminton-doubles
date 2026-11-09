@@ -3,17 +3,45 @@
   'use strict';
   const SAMPLE = '#接龙\n周二晚 7-9\n\n1. panda\n2. 茶米\n3. Knox\n4. Syllabear\n5. Reus\n6. 长华\n7. 云朵\n8. 歪西';
   const MAX_PEOPLE = 64;
+  const MAX_ROUNDS = 500;
   function id() { return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
+  function parseTime(text) {
+    const match = text.match(/(?<!\d)(周[一二三四五六日天]|星期[一二三四五六日天])?\s*(凌晨|早上|上午|中午|下午|晚上|晚)?\s*(\d{1,2})(?:[:：](\d{2}))?\s*(?:点|时)?\s*[-–—~～至到]\s*(凌晨|早上|上午|中午|下午|晚上|晚)?\s*(\d{1,2})(?:[:：](\d{2}))?(?!\d)/);
+    if (!match) return null;
+    const [, weekday, startPeriod, startHour, startMinute = '00', endPeriod, endHour, endMinute = '00'] = match;
+    if (+startHour > 23 || +endHour > 23 || +startMinute > 59 || +endMinute > 59) return null;
+    function hour(value, period) {
+      let h = +value;
+      if (/凌晨|早上|上午/.test(period || '') && h === 12) return 0;
+      if (/晚上|晚/.test(period || '') && h === 12) return 0;
+      if (/中午|下午|晚上|晚/.test(period || '') && h < 12) h += 12;
+      return h;
+    }
+    const start = hour(startHour, startPeriod) * 60 + +startMinute;
+    let sharedPeriod = endPeriod || startPeriod;
+    if (!endPeriod && /晚/.test(startPeriod || '') && start >= 18 * 60 && +endHour < 7) sharedPeriod = '凌晨';
+    const end = hour(endHour, sharedPeriod) * 60 + +endMinute;
+    const durationMinutes = (end - start + 1440) % 1440;
+    if (durationMinutes < 5 || durationMinutes > 720) return null;
+    const clock = minutes => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    return { time: `${weekday ? weekday + ' ' : ''}${clock(start)}–${clock(end)}`, durationMinutes };
+  }
+  function estimateRounds(durationMinutes, matchMinutes) {
+    if (!Number.isInteger(durationMinutes) || durationMinutes < 5 || durationMinutes > 720) throw new Error('活动时长需为 5–720 分钟的整数。');
+    if (!Number.isInteger(matchMinutes) || matchMinutes < 3 || matchMinutes > 120) throw new Error('平均每场用时需为 3–120 分钟的整数。');
+    const estimatedRounds = Math.ceil(durationMinutes / matchMinutes);
+    const reserveRounds = Math.max(4, Math.ceil(estimatedRounds * 0.25));
+    return { estimatedRounds, reserveRounds, totalRounds: estimatedRounds + reserveRounds };
+  }
   function parseRelay(raw) {
     const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const numbered = /^\d{1,3}\s*[.．、)）:：]\s*(.+)$/;
     const hasNumbers = lines.some(s => numbered.test(s));
     const people = [], ignored = [];
-    let time = '';
     for (const line of lines) {
       const match = line.match(numbered);
       if (hasNumbers && !match) { ignored.push(line); continue; }
-      if (!hasNumbers && (/^[#＃]/.test(line) || /^(时间|地点|日期|活动|场地|报名|接龙)[:：]?/.test(line) || /周[一二三四五六日天]|星期|\d[:：]\d|\d\s*[-–~至]\s*\d/.test(line))) { ignored.push(line); continue; }
+      if (!hasNumbers && (/^[#＃]/.test(line) || /^(时间|地点|日期|活动|场地|报名|接龙)[:：]?/.test(line) || parseTime(line) || /周[一二三四五六日天]|星期|\d[:：]\d|\d\s*[-–~至]\s*\d/.test(line))) { ignored.push(line); continue; }
       const name = (match ? match[1] : line).trim();
       const uncertain = /[+＋]\s*\d|取消|候补|退出|晚到|早退|两人|夫妻|带[一二三四五六七八九十\d]/.test(name);
       people.push({ id: id(), name, active: true, confirmed: !uncertain, note: uncertain ? '请核对人数和参与状态；多人报名需拆成独立参赛者。' : '' });
@@ -28,14 +56,8 @@
       }
       seen.add(person.name);
     }
-    const description = ignored.join(' ');
-    const t = description.match(/(周[一二三四五六日天]|星期[一二三四五六日天])?\s*(晚(?:上)?|下午)?\s*(\d{1,2})(?:[:：](\d{2}))?\s*[-–~至]\s*(\d{1,2})(?:[:：](\d{2}))?/);
-    if (t) {
-      let start = +t[3], end = +t[5];
-      if (t[2]) { if (start < 12) start += 12; if (end < 12) end += 12; }
-      if (start < 24 && end < 24 && +(t[4] || 0) < 60 && +(t[6] || 0) < 60) time = `${t[1] || ''} ${String(start).padStart(2, '0')}:${t[4] || '00'}–${String(end).padStart(2, '0')}:${t[6] || '00'}`.trim();
-    }
-    return { people, ignored, time };
+    const parsedTime = parseTime(ignored.join(' '));
+    return { people, ignored, time: parsedTime?.time || '', durationMinutes: parsedTime?.durationMinutes ?? null };
   }
   function key(a, b) { return [a, b].sort().join('|'); }
   function stats(people, schedule) {
@@ -76,7 +98,7 @@
   function generate(people, settings, locked = [], random = Math.random) {
     const active = validatePeople(people);
     if (!Number.isInteger(settings.courts) || settings.courts < 1 || settings.courts > 16) throw new Error('场地数需为 1–16 的整数。');
-    if (!Number.isInteger(settings.rounds) || settings.rounds < 1 || settings.rounds > 100) throw new Error('总轮数需为 1–100 的整数。');
+    if (!Number.isInteger(settings.rounds) || settings.rounds < 1 || settings.rounds > MAX_ROUNDS) throw new Error(`总轮数需为 1–${MAX_ROUNDS} 的整数。`);
     if (locked.length >= settings.rounds) throw new Error('所有轮次已完成。如需继续，请增加总轮数。');
     const schedule = JSON.parse(JSON.stringify(locked));
     const history = stats(people, schedule);
@@ -110,13 +132,18 @@
     }
     return schedule;
   }
+  function appendRounds(people, settings, schedule, extra = 4, random = Math.random) {
+    if (!Number.isInteger(extra) || extra < 1) throw new Error('追加轮数需为正整数。');
+    if (schedule.length >= MAX_ROUNDS) throw new Error(`单次活动最多保存 ${MAX_ROUNDS} 轮，请导出备份后新建活动。`);
+    return generate(people, { ...settings, rounds: Math.min(MAX_ROUNDS, schedule.length + extra) }, schedule, random);
+  }
   function groupText(people, settings, schedule, scope = 'all') {
     const names = Object.fromEntries(people.map(p => [p.id, p.name]));
     const lines = [settings.title || '羽毛球双打'];
     if (settings.date || settings.time) lines.push(`时间：${[settings.date, settings.time].filter(Boolean).join(' ')}`);
     if (settings.location) lines.push(`地点：${settings.location}`);
     lines.push('模式：自由双打轮转');
-    if (scope === 'all') lines.push(`共 ${schedule.length} 轮`);
+    if (scope === 'all') lines.push(settings.roundMode === 'auto' ? `预排 ${schedule.length} 轮（含备用，到时间停止，无需全部打完）` : `共 ${schedule.length} 轮`);
     schedule.forEach((round, index) => {
       if (scope !== 'all' && +scope !== index) return;
       lines.push('', `第 ${index + 1} 轮`);
@@ -126,10 +153,10 @@
     return lines.join('\n');
   }
   function emptyState() {
-    return { version: 1, raw: '', parsedRaw: '', people: [], settings: { title: '羽毛球双打', date: '', time: '', location: '', notes: '', courts: 2, rounds: 7 }, schedule: [], completed: 0, stale: false };
+    return { version: 1, raw: '', parsedRaw: '', people: [], settings: { title: '羽毛球双打', date: '', time: '', location: '', notes: '', courts: 2, roundMode: 'auto', durationMinutes: 120, matchMinutes: 15, rounds: 12 }, schedule: [], completed: 0, stale: false };
   }
   function readBackup(value) {
-    if (!value || value.version !== 1 || !Array.isArray(value.people) || value.people.length > MAX_PEOPLE || !value.settings || !Array.isArray(value.schedule) || value.schedule.length > 100) throw new Error('不是有效的活动备份。');
+    if (!value || value.version !== 1 || !Array.isArray(value.people) || value.people.length > MAX_PEOPLE || !value.settings || !Array.isArray(value.schedule) || value.schedule.length > MAX_ROUNDS) throw new Error('不是有效的活动备份。');
     const ids = new Set();
     const people = value.people.map(p => {
       if (!p || typeof p.id !== 'string' || !p.id || p.id.length > 100 || ids.has(p.id) || typeof p.name !== 'string' || p.name.length > 100 || typeof p.active !== 'boolean' || typeof p.confirmed !== 'boolean') throw new Error('备份中的名单无效。');
@@ -141,7 +168,7 @@
       if (typeof value.settings[field] !== 'string' || value.settings[field].length > 500) throw new Error('备份中的活动信息无效。');
       settings[field] = value.settings[field];
     }
-    for (const [field, max] of [['courts', 16], ['rounds', 100]]) {
+    for (const [field, max] of [['courts', 16], ['rounds', MAX_ROUNDS]]) {
       const n = value.settings[field];
       if (!Number.isInteger(n) || n < 1 || n > max) throw new Error('备份中的场地数或轮数无效。');
       settings[field] = n;
@@ -164,13 +191,20 @@
       return { matches };
     });
     if (!Number.isInteger(value.completed) || value.completed < 0 || value.completed > schedule.length) throw new Error('备份中的完成进度无效。');
+    const oldFormat = value.settings.roundMode === undefined;
+    settings.roundMode = oldFormat ? (value.completed ? 'manual' : 'auto') : value.settings.roundMode;
+    if (!['auto', 'manual'].includes(settings.roundMode)) throw new Error('备份中的排赛方式无效。');
+    settings.durationMinutes = oldFormat ? (parseTime(settings.time)?.durationMinutes || 120) : value.settings.durationMinutes;
+    settings.matchMinutes = oldFormat ? 15 : value.settings.matchMinutes;
+    const estimate = estimateRounds(settings.durationMinutes, settings.matchMinutes);
+    if (oldFormat && settings.roundMode === 'auto') settings.rounds = estimate.totalRounds;
     // A stale backup is allowed, but unsafe unmarked changes must not be shareable.
     const inconsistent = schedule.length && (schedule.length !== settings.rounds || schedule.slice(value.completed).some(r => r.matches.some(m => m.court > settings.courts || m.teams.flat().some(id => !people.find(p => p.id === id).active))));
     const raw = typeof value.raw === 'string' ? value.raw.slice(0, 50000) : '';
     const parsedRaw = typeof value.parsedRaw === 'string' ? value.parsedRaw.slice(0, 50000) : raw;
     return { version: 1, raw, parsedRaw, people, settings, schedule, completed: value.completed, stale: Boolean(value.stale || inconsistent) };
   }
-  const api = { SAMPLE, MAX_PEOPLE, id, parseRelay, generate, stats, groupText, emptyState, readBackup };
+  const api = { SAMPLE, MAX_PEOPLE, MAX_ROUNDS, id, parseTime, parseRelay, estimateRounds, generate, appendRounds, stats, groupText, emptyState, readBackup };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Doubles = api;
 })(globalThis);

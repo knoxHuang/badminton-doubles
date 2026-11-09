@@ -3,6 +3,7 @@
   const E = Doubles, $ = id => document.getElementById(id), storageKey = 'doubles-club-v1';
   let state = E.emptyState(), history = [], storageFailed = false;
   const clone = value => JSON.parse(JSON.stringify(value));
+  let manualRounds = null;
   let currentView = 'setup';
   const pendingRelay = () => !state.completed && state.raw !== state.parsedRaw;
   function setView(view) { currentView = view; document.querySelector('.workspace').dataset.view = view; $('tab-setup').setAttribute('aria-pressed', String(view === 'setup')); $('tab-results').setAttribute('aria-pressed', String(view === 'results')); updateMobileAction(); }
@@ -59,7 +60,7 @@
       const head = node('div', 'round-head'), title = node('h3', '', `第 ${String(index + 1).padStart(2, '0')} 轮`);
       if (index < state.completed) title.append(node('small', '', '已完成 · 已锁定'));
       head.append(title);
-      if (index === state.completed) { const done = button('标记本轮完成', 'text-button', () => mutate(() => state.completed++)); done.disabled = state.stale; head.append(done); }
+      if (index === state.completed) { const done = button('标记本轮完成', 'text-button', completeRound); done.disabled = state.stale || pendingRelay(); head.append(done); }
       const list = node('div');
       round.matches.forEach(match => {
         const card = node('div', 'match');
@@ -89,7 +90,38 @@
   function updateOutput() {
     $('copy').disabled = state.stale || pendingRelay() || !state.schedule.length;
     updateMobileAction();
+    $('append-rounds').disabled = state.stale || pendingRelay() || state.schedule.length >= E.MAX_ROUNDS;
+    document.querySelectorAll('.round-head button').forEach(button => { button.disabled = state.stale || pendingRelay(); });
     $('output').value = pendingRelay() ? '接龙已修改，请重新识别名单并生成赛程后复制。' : state.stale ? '赛程待更新，请重新生成后复制。' : E.groupText(state.people, state.settings, state.schedule, $('scope').value);
+  }
+  function recalculateRounds() {
+    if (state.settings.roundMode === 'auto') {
+      const estimate = E.estimateRounds(state.settings.durationMinutes, state.settings.matchMinutes);
+      state.settings.rounds = Math.min(E.MAX_ROUNDS, Math.max(estimate.totalRounds, state.completed ? state.completed + 4 : 1));
+    }
+  }
+  function renderEstimate() {
+    const auto = state.settings.roundMode === 'auto'; $('rounds').readOnly = auto;
+    $('durationMinutes').disabled = !auto; $('matchMinutes').disabled = !auto;
+    $('append-rounds').disabled = state.stale || pendingRelay() || state.schedule.length >= E.MAX_ROUNDS;
+    if (!auto) { $('round-estimate').textContent = '手动设置轮数。活动结束时可随时停止，也可继续补轮。'; return; }
+    try {
+      const e = E.estimateRounds(state.settings.durationMinutes, state.settings.matchMinutes), people = state.people.filter(p => p.active).length;
+      const matches = Math.min(Number(state.settings.courts), Math.floor(people / 4));
+      const perPerson = people >= 4 ? `每人预计约 ${(e.estimatedRounds * matches * 4 / people).toFixed(1)} 场。` : '识别名单后显示每人预计场次。';
+      $('round-estimate').textContent = `预计正常打 ${e.estimatedRounds} 轮，预排 ${state.settings.rounds} 轮（含备用）。${perPerson}平均用时含换场和短休，多块场地同时比赛算一轮。到时间就停止，无需全部打完。`;
+    } catch (error) { $('round-estimate').textContent = error.message; }
+    $('append-rounds').disabled = state.stale || pendingRelay() || state.schedule.length >= E.MAX_ROUNDS;
+  }
+  function completeRound() {
+    if (state.stale || pendingRelay()) return;
+    try {
+      let extended = null;
+      if (state.settings.roundMode === 'auto' && state.schedule.length - state.completed - 1 <= 2 && state.schedule.length < E.MAX_ROUNDS) extended = E.appendRounds(state.people, state.settings, state.schedule, Math.min(4, E.MAX_ROUNDS - state.schedule.length));
+      const added = extended ? extended.length - state.schedule.length : 0;
+      mutate(() => { state.completed++; if (extended) { state.schedule = extended; state.settings.rounds = extended.length; } });
+      if (added) notify(`本轮已完成，已自动补充后续 ${added} 轮。到时间即可停止。`);
+    } catch (error) { notify(error.message, true); }
   }
   function render() {
     $('raw').value = state.raw; $('raw').disabled = state.completed > 0; $('sample').disabled = state.completed > 0; $('parse').disabled = state.completed > 0; $('raw').title = state.completed ? '已有完成轮次，请通过名单添加、编辑或取消参与。' : ''; 
@@ -97,7 +129,7 @@
     $('undo').disabled = !history.length;
     $('parse').textContent = state.completed ? '历史已锁定' : '识别名单';
     $('generate').textContent = state.completed ? '保留已完成轮次，重排后续' : state.schedule.length ? '重新生成赛程 ↗' : '生成多轮赛程 ↗';
-    renderRoster(); renderSchedule(); updateMobileAction();
+    renderRoster(); renderSchedule(); renderEstimate(); updateMobileAction();
   }
   $('raw').addEventListener('input', () => { state.raw = $('raw').value; save(); updateOutput(); });
   $('sample').addEventListener('click', () => { mutate(() => { state.raw = E.SAMPLE; }); notify('已填入你的接龙示例，点击「识别名单」继续。'); });
@@ -106,7 +138,7 @@
     const parsed = E.parseRelay(state.raw);
     if (!parsed.people.length) { notify('未识别到参赛者。请使用「1. 姓名」格式。', true); return; }
     if (parsed.people.length > E.MAX_PEOPLE) { notify(`最多支持 ${E.MAX_PEOPLE} 位参赛者。`, true); return; }
-    mutate(() => { state.people = parsed.people; state.parsedRaw = state.raw; state.schedule = []; state.stale = false; if (parsed.time) state.settings.time = parsed.time; });
+    mutate(() => { state.people = parsed.people; state.parsedRaw = state.raw; state.schedule = []; state.stale = false; if (parsed.time) state.settings.time = parsed.time; if (parsed.durationMinutes) state.settings.durationMinutes = parsed.durationMinutes; recalculateRounds(); });
     $('source-details').hidden = false;
     $('parse-details').textContent = parsed.ignored.length ? `未作为名单导入：${parsed.ignored.join('；')}。日期和地点请在下方填写；请核对识别出的时间。` : '已按每行一位参赛者识别，请核对名字与人数。';
     notify(`已识别 ${parsed.people.length} 人${parsed.people.some(p => !p.confirmed) ? '，有待核对项' : ''}。请核对名单后生成赛程。`);
@@ -118,11 +150,22 @@
   });
   for (const field of Object.keys(state.settings)) $(field).addEventListener('change', () => {
     let value = $(field).value;
-    if (field === 'courts' || field === 'rounds') {
-      value = Number(value); const max = field === 'courts' ? 16 : 100;
-      if (!Number.isInteger(value) || value < 1 || value > max) { $(field).value = state.settings[field]; notify(`${field === 'courts' ? '场地数' : '总轮数'}需为 1–${max} 的整数。`, true); return; }
+    if (['courts', 'rounds', 'durationMinutes', 'matchMinutes'].includes(field)) {
+      value = Number(value); const limits = {courts:[1,16], rounds:[1,E.MAX_ROUNDS], durationMinutes:[5,720], matchMinutes:[3,120]}, [min,max] = limits[field];
+      if (!Number.isInteger(value) || value < min || value > max) { $(field).value = state.settings[field]; notify(`请输入 ${min}–${max} 的整数。`, true); return; }
     }
-    mutate(() => { state.settings[field] = value; }, field === 'courts' || field === 'rounds');
+    mutate(() => {
+      if (field === 'roundMode' && value === 'auto') manualRounds = state.settings.rounds;
+      state.settings[field] = value;
+      if (field === 'roundMode' && value === 'manual' && manualRounds !== null) state.settings.rounds = manualRounds;
+      if (field === 'time') { const parsed = E.parseTime(value); if (parsed) { state.settings.time = parsed.time; state.settings.durationMinutes = parsed.durationMinutes; } }
+      if (['roundMode','durationMinutes','matchMinutes','time'].includes(field)) recalculateRounds();
+    }, ['courts','rounds','roundMode','durationMinutes','matchMinutes','time'].includes(field));
+  });
+  $('append-rounds').addEventListener('click', () => {
+    if (state.stale || pendingRelay()) return;
+    try { const schedule = E.appendRounds(state.people, state.settings, state.schedule, Math.min(4, E.MAX_ROUNDS - state.schedule.length)); mutate(() => { state.schedule = schedule; state.settings.rounds = schedule.length; }); notify('已补充后续轮次，现有对阵保持不变。到时间即可停止。'); }
+    catch (error) { notify(error.message, true); }
   });
   $('generate').addEventListener('click', () => {
     if (state.raw !== state.parsedRaw && !state.completed) { notify('接龙原文已修改。请先重新识别并核对名单，再生成赛程。', true); return; }
@@ -159,7 +202,7 @@
   $('file').addEventListener('change', async () => {
     const file = $('file').files[0]; if (!file) return;
     try {
-      if (file.size > 2000000) throw new Error('备份文件不能超过 2 MB。');
+      if (file.size > 8000000) throw new Error('备份文件不能超过 8 MB。');
       const imported = E.readBackup(JSON.parse(await file.text()));
       mutate(() => { state = imported; }); $('source-details').hidden = true; notify('已导入活动备份。可撤销此次导入。');
     } catch (error) { notify(`导入失败：${error.message}`, true); }
