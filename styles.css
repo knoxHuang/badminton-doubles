@@ -11,3 +11,5 @@ body{padding-bottom:calc(94px + env(safe-area-inset-bottom))}main{padding-inline
 .notice{position:fixed;top:18px;left:50%;transform:translateX(-50%);width:min(540px,calc(100% - 32px));z-index:30;box-shadow:0 6px 24px #10201620;max-height:32vh;overflow:auto}.notice.error{border-left:4px solid var(--warn)}
 @media(max-width:680px){.notice{top:calc(12px + env(safe-area-inset-top));font-size:14px}input:disabled,textarea:disabled{opacity:.65}}
 @media(max-width:680px){.court{white-space:nowrap}.match{grid-template-columns:43px minmax(0,1fr) 18px minmax(0,1fr)}#output{font-size:16px}}
+/* Disable double-tap zoom while keeping scrolling and pinch zoom available. */
+html,body,button,a,input,select,textarea,summary,label{touch-action:manipulation}
