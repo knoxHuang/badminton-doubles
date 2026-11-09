@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="粘贴微信接龙，安排羽毛球自由双打轮转，复制多轮对阵到微信群。">
+  <title>换个搭档 · 羽毛球排赛</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="engine.js" defer></script>
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="#">换个搭档<span>DOUBLES CLUB</span></a><span class="local-label">自由双打 · 本机保存</span></header>
+  <main>
+    <div class="intro"><div><p class="eyebrow">LESS PLANNING. MORE PLAYING.</p><h1>人到齐，<br class="mobile-break">就开场。</h1><p class="subline">把接龙贴进来，把对阵带到球场。</p></div><div class="court-art" aria-hidden="true"><div></div><span>2 × 2</span></div></div>
+    <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+    <nav class="view-tabs" aria-label="工作区"><button id="tab-setup" aria-pressed="true">01 名单与设置</button><button id="tab-results" aria-pressed="false">02 赛程与复制</button></nav>
+    <div class="workspace" data-view="setup">
+      <section class="setup" aria-label="名单和活动设置">
+        <div class="section-title"><span class="step">01</span><h2>接龙名单</h2><button id="sample" class="text-button">填入你的示例</button></div>
+        <label for="raw" class="sr-only">微信接龙原文</label><textarea id="raw" rows="8" placeholder="#接龙&#10;周二晚 7-9&#10;&#10;1. panda&#10;2. 茶米&#10;3. Knox&#10;4. Syllabear" spellcheck="false"></textarea>
+        <div class="row space"><span class="hint">粘贴原文后，先核对名单。</span><button id="parse" class="secondary">识别名单</button></div>
+        <details id="source-details" hidden><summary>查看识别说明</summary><p id="parse-details" class="hint"></p></details>
+        <div id="roster-section" hidden><div class="row space roster-heading"><h3>参赛者 <span id="people-count" class="count">0</span></h3><button id="add" class="text-button">＋ 添加</button></div><p class="hint">取消「参与」可移出后续比赛；同名者请修改显示名。已有完成轮次时，请在此增删名单，接龙原文将锁定。</p><div id="roster"></div></div>
+        <div class="section-title settings-title"><span class="step">02</span><h2>安排这次活动</h2></div>
+        <div class="fields"><label class="wide">活动名称<input id="title" maxlength="80" value="羽毛球双打"></label><label>日期（选填）<input id="date" type="date"></label><label>时间（选填）<input id="time" maxlength="60" placeholder="周二 19:00–21:00"></label><label class="wide">地点（选填）<input id="location" maxlength="100" placeholder="球馆名称"></label><label>可用场地数<input id="courts" type="number" min="1" max="16" value="2"></label><label>总轮数<input id="rounds" type="number" min="1" max="100" value="7"></label><label class="wide">群通知备注（选填）<input id="notes" maxlength="200" placeholder="请按轮次上场，以现场通知为准。"></label></div>
+        <p class="mode-note">自由双打轮转 · 一次生成多轮<br>优先均衡上场次数，再减少重复搭档和对手。</p>
+        <button id="generate" class="primary full">生成多轮赛程 <span aria-hidden="true">↗</span></button>
+      </section>
+      <section class="results" aria-label="赛程与群通知">
+        <div class="section-title"><span class="step">03</span><h2>今天，怎么打</h2><span id="schedule-meta" class="hint"></span></div>
+        <div id="empty" class="empty"><span class="empty-number">LOVE<br>ALL.</span><h3>第一场，从一份接龙开始。</h3><p>识别名单，设置场地和轮数。<br>这里会出现每轮对阵。</p></div>
+        <div id="schedule-section" hidden>
+          <div id="stale" class="warning" hidden>名单或设置已变更。请重新生成后，再复制群通知。</div>
+          <div class="summary-strip"><span><strong id="stat-people">0</strong> 人参与</span><span><strong id="stat-rounds">0</strong> 轮比赛</span><span><strong id="stat-matches">0</strong> 场对阵</span></div>
+          <label class="round-filter">查看轮次<select id="view-round"><option value="all">全部轮次</option></select></label><div id="schedule"></div>
+          <details class="stats"><summary>查看上场次数与搭档重复</summary><p id="quality" class="hint"></p><div id="stats-list"></div></details>
+          <div class="share"><div class="row space"><h3>带到微信群</h3><label class="scope-label">复制范围<select id="scope"><option value="all">完整赛程</option></select></label></div><label for="output" class="sr-only">微信群通知文本</label><textarea id="output" readonly rows="10" spellcheck="false"></textarea><button id="copy" class="primary full">复制群通知</button><p class="hint">复制后粘贴到微信群发送。</p></div>
+        </div>
+      </section>
+    </div>
+    <footer><span id="save-status">草稿仅保存在当前浏览器</span><div class="row"><button id="undo" class="text-button" disabled>撤销</button><button id="export" class="text-button">导出备份</button><button id="import" class="text-button">导入备份</button><button id="clear" class="text-button danger">清空</button><input id="file" type="file" accept="application/json,.json" hidden></div></footer>
+  </main>
+  <div class="mobile-action"><button id="mobile-primary" class="primary full">识别接龙名单</button></div>
+</body>
+</html>
