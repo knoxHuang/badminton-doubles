@@ -305,7 +305,39 @@
     const timeSource = ['manual', 'relay', 'retained'].includes(value.timeSource) ? value.timeSource : 'manual';
     return { version: 1, raw, parsedRaw, timeSource, pairingVersion: PAIRING_VERSION, people, settings, schedule, completed: value.completed, stale: Boolean(value.stale || inconsistent) };
   }
-  const api = { SAMPLE, MAX_PEOPLE, MAX_ROUNDS, PAIRING_VERSION, id, parseTime, parseRelay, estimateRounds, timeProblem, generate, appendRounds, stats, partnerCoverage, groupText, emptyState, readBackup };
+  const MAX_SHARE_LENGTH = 12000;
+  function encodeSnapshot(value) {
+    const state = readBackup(value);
+    if (!state.schedule.length || state.stale || state.raw !== state.parsedRaw) throw new Error('请先生成有效赛程，再分享。');
+    const indexes = new Map(state.people.map((p, i) => [p.id, i]));
+    const snapshot = { v: 1, p: state.people.map(p => [p.name, p.active ? 1 : 0]), s: state.settings, c: state.completed, r: state.schedule.map(r => r.matches.map(m => [m.court, ...m.teams.flat().map(id => indexes.get(id))])) };
+    const bytes = new TextEncoder().encode(JSON.stringify(snapshot));
+    if (bytes.length > MAX_SHARE_LENGTH * 3 / 4) throw new Error('赛程过长，无法生成分享链接。请导出备份文件分享。');
+    return btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  }
+  function decodeSnapshot(encoded) {
+    try {
+      if (!encoded || encoded.length > MAX_SHARE_LENGTH || !/^[A-Za-z0-9_-]+$/.test(encoded)) throw new Error();
+      const bytes = Uint8Array.from(atob(encoded.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+      const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+      if (data.v !== 1 || !Array.isArray(data.p) || data.p.length > MAX_PEOPLE || !Array.isArray(data.r) || !data.r.length || data.r.length > MAX_ROUNDS) throw new Error();
+      const people = data.p.map((p, i) => {
+        if (!Array.isArray(p) || p.length !== 2 || ![0, 1].includes(p[1])) throw new Error();
+        return { id: `shared-${i}`, name: p[0], active: p[1] === 1, confirmed: true, note: '' };
+      });
+      const schedule = data.r.map(matches => {
+        if (!Array.isArray(matches) || !matches.length || matches.length > 16) throw new Error();
+        return { matches: matches.map(m => {
+          if (!Array.isArray(m) || m.length !== 5 || m.slice(1).some(i => !Number.isInteger(i) || i < 0 || i >= people.length)) throw new Error();
+          return { court: m[0], teams: [[people[m[1]].id, people[m[2]].id], [people[m[3]].id, people[m[4]].id]] };
+        }) };
+      });
+      const state = readBackup({ ...emptyState(), people, settings: data.s, schedule, completed: data.c });
+      if (state.stale) throw new Error();
+      return state;
+    } catch { throw new Error('分享链接无效、不完整或版本不支持，请让组织者重新分享。'); }
+  }
+  const api = { SAMPLE, MAX_PEOPLE, MAX_ROUNDS, PAIRING_VERSION, MAX_SHARE_LENGTH, id, parseTime, parseRelay, estimateRounds, timeProblem, generate, appendRounds, stats, partnerCoverage, groupText, emptyState, readBackup, encodeSnapshot, decodeSnapshot };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Doubles = api;
 })(globalThis);

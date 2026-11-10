@@ -208,3 +208,26 @@ test('无法在活动轮数上限内覆盖时明确提示，仍允许手动排�
   const manual = E.generate(p, { ...settings, roundMode: 'manual', rounds: 7 }, [], rng());
   assert.equal(manual.length, 7);
 });
+test('分享快照保持完整对阵与进度，不携带原始接龙', () => {
+  const state = E.emptyState(); state.people = E.parseRelay(E.SAMPLE).people;
+  state.raw = state.parsedRaw = '原始接龙私有内容';
+  state.schedule = E.generate(state.people, state.settings, [], rng()); state.completed = 3;
+  const encoded = E.encodeSnapshot(state), shared = E.decodeSnapshot(encoded);
+  assert.ok(encoded.length < 2000);
+  assert.equal(shared.completed, 3);
+  assert.equal(shared.raw, '');
+  assert.equal(E.groupText(shared.people, shared.settings, shared.schedule), E.groupText(state.people, state.settings, state.schedule));
+  state.people[0].name = '后续修改';
+  assert.notEqual(E.decodeSnapshot(encoded).people[0].name, '后续修改');
+});
+test('分享拒绝坏链接、重复上场和过长数据', () => {
+  for (const input of ['', 'broken', 'a'.repeat(E.MAX_SHARE_LENGTH + 1), '%20']) assert.throws(() => E.decodeSnapshot(input), /分享链接无效/);
+  const state = E.emptyState(); state.people = players(8); state.schedule = E.generate(state.people, state.settings, [], rng());
+  const data = JSON.parse(Buffer.from(E.encodeSnapshot(state), 'base64url').toString('utf8'));
+  data.r[0][0][1] = data.r[0][0][2];
+  assert.throws(() => E.decodeSnapshot(Buffer.from(JSON.stringify(data)).toString('base64url')), /无效/);
+  state.stale = true; assert.throws(() => E.encodeSnapshot(state), /有效赛程/);
+  const large = E.emptyState(); large.people = players(64); large.settings.courts = 16;
+  large.schedule = E.generate(large.people, large.settings); large.settings.rounds = large.schedule.length;
+  assert.throws(() => E.encodeSnapshot(large), /过长/);
+});

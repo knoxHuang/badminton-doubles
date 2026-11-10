@@ -6,12 +6,12 @@
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="粘贴微信接龙，安排羽毛球自由双打轮转，复制多轮对阵到微信群。">
   <title>换个搭档 · 羽毛球排赛</title>
-  <link rel="stylesheet" href="styles.css?v=1.0.0">
-  <script src="engine.js?v=1.0.0" defer></script>
-  <script src="app.js?v=1.0.0" defer></script>
+  <link rel="stylesheet" href="styles.css?v=1.0.1">
+  <script src="engine.js?v=1.0.1" defer></script>
+  <script src="app.js?v=1.0.1" defer></script>
 </head>
 <body>
-  <header class="topbar"><a class="brand" href="#">换个搭档<span id="app-version" class="app-version" data-version="1.0.0">v1.0.0</span></a><span class="local-label">自由双打 · 本机保存</span></header>
+  <header class="topbar"><a class="brand" href="#">换个搭档<span id="app-version" class="app-version" data-version="1.0.1">v1.0.1</span></a><span class="local-label">自由双打 · 本机保存</span></header>
   <main>
     <div class="intro"><div><h1>接龙变赛程</h1><p class="subline">粘贴名单，轮换搭档，直接开打。</p></div></div>
     <div id="notice" class="notice" role="status" aria-live="polite" hidden><span id="notice-text"></span><button id="notice-dismiss" class="notice-dismiss" type="button" aria-label="关闭提示">×</button></div>
@@ -40,6 +40,7 @@
         <button id="generate" class="primary full">生成多轮赛程 <span aria-hidden="true">↗</span></button>
       </section>
       <section class="results" aria-label="赛程与群通知">
+        <div id="shared-banner" class="warning" hidden><p id="shared-description">这是组织者分享时的只读赛程快照。后续调整不会自动同步。</p><a id="leave-shared" href="./">打开我自己的排赛</a></div>
         <div class="section-title"><span class="step">03</span><h2>今天，怎么打</h2><span id="schedule-meta" class="hint"></span></div>
         <div id="empty" class="empty"><span class="empty-number">LOVE<br>ALL.</span><h3>第一场，从一份接龙开始。</h3><p>识别名单，设置场地和轮数。<br>这里会出现每轮对阵。</p></div>
         <div id="schedule-section" hidden>
@@ -47,7 +48,7 @@
           <div class="summary-strip"><span><strong id="stat-people">0</strong> 人参与</span><span><strong id="stat-rounds">0</strong> 轮比赛</span><span><strong id="stat-matches">0</strong> 场对阵</span></div>
           <label class="round-filter">查看轮次<select id="view-round"><option value="all">全部轮次</option></select></label><div class="round-navigation" aria-label="轮次导航"><button id="round-prev" class="secondary">上一轮</button><button id="round-current" class="secondary">进行中</button><button id="round-next" class="secondary">下一轮</button></div><p id="round-position" class="hint" role="status"></p><div id="schedule"></div><button id="append-rounds" class="secondary full">再补 4 轮 · 保留现有对阵</button>
           <details class="stats"><summary>查看上场次数与搭档覆盖进度</summary><p id="quality" class="hint"></p><div id="stats-list"></div></details>
-          <div class="share"><details id="share-preview"><summary>群通知 · 选择范围与预览</summary><div class="row space"><h3>带到微信群</h3><label class="scope-label">复制范围<select id="scope"><option value="all">完整赛程</option></select></label></div><label for="output" class="sr-only">微信群通知文本</label><textarea id="output" readonly rows="10" spellcheck="false"></textarea></details><button id="copy" class="primary full">复制群通知</button><p class="hint">复制后粘贴到微信群发送。</p></div>
+          <div class="share"><button id="share-schedule" class="secondary full">复制赛程分享链接</button><p class="hint">别人打开即可查看同一份赛程。持有链接的人都能查看；修改后需重新分享。</p><div id="share-link-fallback" hidden><label for="share-url">赛程分享链接</label><textarea id="share-url" readonly rows="3"></textarea></div><details id="share-preview"><summary>群通知 · 选择范围与预览</summary><div class="row space"><h3>带到微信群</h3><label class="scope-label">复制范围<select id="scope"><option value="all">完整赛程</option></select></label></div><label for="output" class="sr-only">微信群通知文本</label><textarea id="output" readonly rows="10" spellcheck="false"></textarea></details><button id="copy" class="primary full">复制群通知</button><p class="hint">复制后粘贴到微信群发送。</p></div>
         </div>
       </section>
     </div>

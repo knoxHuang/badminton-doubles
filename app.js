@@ -3,6 +3,7 @@
   const E = Doubles, $ = id => document.getElementById(id), storageKey = 'doubles-club-v1';
   const currentVersion = $('app-version').dataset.version;
   let availableVersion = null;
+  const sharedView = location.hash.startsWith('#share=');
   let state = E.emptyState(), history = [], storageFailed = false;
   const clone = value => JSON.parse(JSON.stringify(value));
   let manualRounds = null;
@@ -26,9 +27,10 @@
     const b = $('mobile-primary'), problem = timeProblem();
     b.disabled = false;
     const selected = $('view-round').value;
-    $('mobile-complete').hidden = !(currentView === 'results' && state.schedule.length && selected !== 'all' && Number(selected) === state.completed && !state.stale && !pendingRelay());
+    $('mobile-complete').hidden = sharedView || !(currentView === 'results' && state.schedule.length && selected !== 'all' && Number(selected) === state.completed && !state.stale && !pendingRelay());
     $('mobile-complete').disabled = Boolean(problem);
-    if (pendingRelay()) b.textContent = state.people.length ? '重新识别名单' : '识别接龙名单';
+    if (sharedView && !state.schedule.length) { b.textContent = '分享链接无效'; b.disabled = true; }
+    else if (pendingRelay()) b.textContent = state.people.length ? '重新识别名单' : '识别接龙名单';
     else if (currentView === 'results' && state.schedule.length) b.textContent = problem ? '返回设置核对活动时间' : state.stale ? '赛程待更新 · 返回设置' : $('scope').value === 'all' ? '复制完整赛程群通知' : `复制第 ${Number($('scope').value) + 1} 轮群通知`;
     else if (currentView === 'results') b.textContent = '返回填写名单';
     else if (problem) { b.textContent = '请先核对活动时间'; b.disabled = true; }
@@ -37,11 +39,12 @@
   function notify(message, error = false) { $('notice-text').textContent = message; $('notice').className = `notice${error ? ' error' : ''}`; $('notice').hidden = !message; clearTimeout(notify.timer); if (message && !error) notify.timer = setTimeout(() => { $('notice').hidden = true; }, 5500); }
   function remember() { history.push(clone(state)); if (history.length > 20) history.shift(); }
   function save() {
+    if (sharedView) return;
     try { localStorage.setItem(storageKey, JSON.stringify(state)); storageFailed = false; }
     catch { storageFailed = true; }
     $('save-status').textContent = storageFailed ? '本机保存不可用，请导出备份' : '草稿已保存在当前浏览器';
   }
-  function mutate(change, stale = false, { keepRoster = false } = {}) { remember(); change(); if (stale && state.schedule.length) state.stale = true; save(); render({ keepRoster }); }
+  function mutate(change, stale = false, { keepRoster = false } = {}) { if (sharedView) return; remember(); change(); if (stale && state.schedule.length) state.stale = true; save(); render({ keepRoster }); }
   function node(tag, className, text) { const n = document.createElement(tag); if (className) n.className = className; if (text !== undefined) n.textContent = text; return n; }
   function button(text, className, click) { const b = node('button', className, text); b.type = 'button'; b.addEventListener('click', click); return b; }
   function toggle(label, checked, change, className = '') {
@@ -87,7 +90,7 @@
       const head = node('div', 'round-head'), title = node('h3', '', `第 ${String(index + 1).padStart(2, '0')} 轮`);
       if (index < state.completed) title.append(node('small', '', '已完成 · 已锁定'));
       head.append(title);
-      if (index === state.completed) { const done = button('标记本轮完成', 'text-button', completeRound); done.disabled = state.stale || pendingRelay(); head.append(done); }
+      if (!sharedView && index === state.completed) { const done = button('标记本轮完成', 'text-button', completeRound); done.disabled = state.stale || pendingRelay(); head.append(done); }
       const list = node('div');
       round.matches.forEach(match => {
         const card = node('div', 'match');
@@ -142,6 +145,7 @@
   function updateOutput() {
     const problem = timeProblem();
     $('generate').disabled = Boolean(problem);
+    $('share-schedule').disabled = state.stale || pendingRelay() || Boolean(problem) || !state.schedule.length;
     $('copy').disabled = state.stale || pendingRelay() || Boolean(problem) || !state.schedule.length;
     updateMobileAction();
     $('append-rounds').disabled = state.stale || pendingRelay() || Boolean(problem) || state.schedule.length >= E.MAX_ROUNDS;
@@ -181,6 +185,7 @@
     $('append-rounds').disabled = state.stale || pendingRelay() || Boolean(problem) || state.schedule.length >= E.MAX_ROUNDS;
   }
   function completeRound() {
+    if (sharedView) return;
     if (state.stale || pendingRelay() || timeProblem()) return;
     try {
       const singleRound = $('view-round').value !== 'all';
@@ -312,6 +317,15 @@
     } finally { $('check-update').disabled = false; }
   }
   $('check-update').addEventListener('click', checkForUpdate);
+  window.addEventListener('hashchange', event => {
+    if (new URL(event.oldURL).hash.startsWith('#share=') || location.hash.startsWith('#share=')) {
+      if (!sharedView) {
+        save();
+        if (storageFailed) { notify('草稿保存失败，请先导出备份，再重新打开分享链接。', true); return; }
+      }
+      location.reload();
+    }
+  });
   $('apply-update').addEventListener('click', () => {
     if (!availableVersion) return;
     save();
@@ -319,6 +333,17 @@
     const url = new URL(location.href);
     url.searchParams.set('v', availableVersion);
     location.assign(url.href);
+  });
+  $('share-schedule').addEventListener('click', async () => {
+    if (state.stale || pendingRelay() || timeProblem() || !state.schedule.length) return;
+    try {
+      const encoded = E.encodeSnapshot(state);
+      const url = new URL(/^https?:$/.test(location.protocol) ? location.href : 'https://knoxhuang.github.io/badminton-doubles/');
+      url.search = ''; url.searchParams.set('v', currentVersion); url.hash = `share=${encoded}`;
+      $('share-url').value = url.href;
+      try { await navigator.clipboard.writeText(url.href); $('share-link-fallback').hidden = true; notify('赛程链接已复制。发给其他人即可查看，修改赛程后需重新分享。'); }
+      catch { $('share-link-fallback').hidden = false; $('share-url').focus(); $('share-url').select(); notify('自动复制不可用，请复制下方已选中的分享链接。'); }
+    } catch (error) { notify(error.message, true); }
   });
   $('copy').addEventListener('click', async () => {
     if (state.stale || pendingRelay() || timeProblem() || !state.schedule.length) return;
@@ -353,7 +378,16 @@
     $('player-search').value = '';
     mutate(() => { state = E.emptyState(); }); $('source-details').hidden = true; notify('已清空，可点击「撤销」恢复。');
   });
-  try {
+  if (sharedView) {
+    document.body.classList.add('shared-view');
+    $('shared-banner').hidden = false;
+    $('tab-results').textContent = '共享赛程';
+    document.querySelector('.local-label').textContent = '赛程快照 · 只读';
+    document.querySelector('.brand').href = location.href;
+    $('save-status').textContent = '共享快照未写入本机草稿';
+    try { state = E.decodeSnapshot(location.hash.slice(7)); }
+    catch (error) { $('shared-description').textContent = error.message; notify(error.message, true); }
+  } else try {
     const saved = localStorage.getItem(storageKey);
     if (saved) {
       const previous = JSON.parse(saved);
@@ -363,6 +397,6 @@
   }
   catch { notify('本机草稿不可用或格式无效。可重新粘贴接龙，或导入备份。', true); }
   render();
-  if (state.schedule.length && !state.stale) setView('results', { reset: true });
+  if (sharedView || (state.schedule.length && !state.stale)) setView('results', { reset: true });
   if (/^https?:$/.test(location.protocol)) checkForUpdate();
 })();
