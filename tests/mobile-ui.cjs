@@ -37,7 +37,7 @@ async function main() {
     await settle(page);
   }
   async function fixture(width) {
-    const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true });
+    const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
     const page = await context.newPage();
     page.setDefaultTimeout(5000);
     await page.goto(baseURL);
@@ -262,9 +262,13 @@ async function main() {
         await tapOnce(page, '#round-next');
         assert.equal(await page.locator('#schedule .round:visible').count(), 12);
         await page.evaluate(() => scrollBy(0, 120)); await settle(page);
-        const beforeCompletion = await page.evaluate(() => scrollY);
         await tapOnce(page, '#mobile-primary');
-        assert.ok(Math.abs(await page.evaluate(() => scrollY) - beforeCompletion) <= 2, 'Completing a round must preserve the reading position');
+        const visible = await page.locator('.round.current').evaluate(el => {
+          const r = el.getBoundingClientRect(), nav = document.querySelector('.view-tabs').getBoundingClientRect(), bar = document.querySelector('.mobile-action').getBoundingClientRect();
+          return { top: r.top, bottom: r.bottom, center: (r.top + r.bottom) / 2, target: (nav.height + bar.top) / 2, nav: nav.height, bar: bar.top };
+        });
+        assert.ok(visible.top > visible.nav + 24 && visible.bottom < visible.bar, JSON.stringify(visible));
+        assert.ok(Math.abs(visible.center - visible.target) < 85, 'Current round should be comfortably centered');
         assert.match(await page.locator('.round.current .round-status').innerText(), /当前比赛.*进行中/);
         const distinction = await page.evaluate(() => {
           const current = document.querySelector('.round.current'), next = current.nextElementSibling;

@@ -127,10 +127,12 @@ async function testSingleRoundAutoAppend(page) {
   const original = (await readState(page)).schedule;
   await page.locator('#view-round').selectOption('0');
   for (let completed = 1; completed <= 10; completed++) {
-    const readingPosition = await page.evaluate(() => scrollY);
     await page.locator('#mobile-primary').click();
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    assert.ok(Math.abs(await page.evaluate(() => scrollY) - readingPosition) <= 2, 'Completion and automatic append must preserve scroll position');
+    const visible = await page.locator('.round.current').evaluate(el => {
+      const r = el.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, nav: document.querySelector('.view-tabs').offsetHeight, bar: document.querySelector('.mobile-action').getBoundingClientRect().top };
+    });
+    assert.ok(visible.top > visible.nav + 20 && visible.bottom < visible.bar, JSON.stringify(visible));
     assert.equal(await page.locator('#view-round').inputValue(), 'all');
     assert.equal(await page.locator('#schedule .round.current').getAttribute('data-round'), String(completed));
     assert.equal(await readScope(page), 'all');
@@ -199,7 +201,7 @@ async function testSingleCourtFullCoverage(page) {
     const cases = [testConflict, testShorterPlayingTime, testMissingTimeSource, testSingleRoundProgress, testSingleRoundAutoAppend, testPartnerRotationAndUpgrade, testSingleCourtFullCoverage, testCollapsedPreviewCopyFallback];
     for (const run of cases) {
       // Each case owns a new nonpersistent context; user browser data is never accessed.
-      const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+      const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });
       try {
         const page = await context.newPage();
         page.setDefaultTimeout(10000);

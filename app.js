@@ -190,14 +190,11 @@
     if (sharedView || state.completed >= state.schedule.length) return;
     if (state.stale || pendingRelay() || timeProblem()) return;
     try {
-      const scrollTop = window.scrollY;
       let extended = null;
       if (state.settings.roundMode === 'auto' && state.schedule.length - state.completed - 1 <= 2 && state.schedule.length < E.MAX_ROUNDS) extended = E.appendRounds(state.people, state.settings, state.schedule, Math.min(4, E.MAX_ROUNDS - state.schedule.length));
       const added = extended ? extended.length - state.schedule.length : 0;
       mutate(() => { state.completed++; if (extended) { state.schedule = extended; state.settings.rounds = extended.length; } });
-      focusedRound = Math.min(state.completed, state.schedule.length - 1);
-      filterRounds();
-      requestAnimationFrame(() => window.scrollTo({ top: scrollTop, behavior: 'auto' }));
+      if (state.completed < state.schedule.length) focusRound(state.completed);
       if (added) notify(`本轮已完成，已自动补充后续 ${added} 轮。到时间即可停止。`);
       else if (state.completed === state.schedule.length) notify('全部预排轮次已完成。需要继续时，可点击「再补 4 轮」。');
     } catch (error) { notify(error.message, true); }
@@ -205,7 +202,22 @@
   function focusRound(index) {
     focusedRound = Math.max(0, Math.min(index, state.schedule.length - 1));
     filterRounds();
-    requestAnimationFrame(() => document.querySelector(`#schedule [data-round="${focusedRound}"]`)?.scrollIntoView({ block: 'start', behavior: 'auto' }));
+    requestAnimationFrame(() => {
+      const round = document.querySelector(`#schedule [data-round="${focusedRound}"]`);
+      if (!round) return;
+      const rect = round.getBoundingClientRect();
+      const top = document.querySelector('.view-tabs').offsetHeight + 16;
+      const action = document.querySelector('.mobile-action').getBoundingClientRect();
+      let bottom = Math.min(window.innerHeight - 16, action.height ? action.top - 16 : window.innerHeight - 16);
+      if (!$('notice').hidden) {
+        const notice = $('notice').getBoundingClientRect();
+        if (notice.top > top + 160) bottom = Math.min(bottom, notice.top - 12);
+      }
+      const available = Math.max(0, bottom - top);
+      const comfortableTop = rect.height <= available ? top + (available - rect.height) / 2 : top;
+      const behavior = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+      window.scrollTo({ top: Math.max(0, window.scrollY + rect.top - comfortableTop), behavior });
+    });
   }
   function selectRound(index) { $('view-round').value = 'all'; focusRound(index); updateOutput(); }
   function render({ keepRoster = false } = {}) {
