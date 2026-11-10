@@ -1,5 +1,10 @@
 {
   "name": "badminton-doubles",
   "private": true,
-  "scripts": { "test": "node --test", "start": "python3 -m http.server 4173 --bind 127.0.0.1" }
+  "scripts": {
+    "test": "node --test tests/engine.test.js",
+    "test:mobile": "node tests/mobile-ui.cjs",
+    "test:workflow": "node tests/workflow-ui.cjs",
+    "start": "python3 -m http.server 4173 --bind 127.0.0.1"
+  }
 }

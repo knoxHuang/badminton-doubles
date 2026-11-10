@@ -33,6 +33,13 @@
     const reserveRounds = Math.max(4, Math.ceil(estimatedRounds * 0.25));
     return { estimatedRounds, reserveRounds, totalRounds: estimatedRounds + reserveRounds };
   }
+  function timeProblem(settings) {
+    const range = parseTime(settings.time || '');
+    if (settings.roundMode === 'auto' && range && settings.durationMinutes > range.durationMinutes) {
+      return `可打球时长 ${settings.durationMinutes} 分钟超过活动时间范围的 ${range.durationMinutes} 分钟。请修改活动时间或可打球时长。`;
+    }
+    return '';
+  }
   function parseRelay(raw) {
     const lines = raw.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
     const numbered = /^\d{1,3}\s*[.．、)）:：]\s*(.+)$/;
@@ -97,6 +104,8 @@
   }
   function generate(people, settings, locked = [], random = Math.random) {
     const active = validatePeople(people);
+    const problem = timeProblem(settings);
+    if (problem) throw new Error(problem);
     if (!Number.isInteger(settings.courts) || settings.courts < 1 || settings.courts > 16) throw new Error('场地数需为 1–16 的整数。');
     if (!Number.isInteger(settings.rounds) || settings.rounds < 1 || settings.rounds > MAX_ROUNDS) throw new Error(`总轮数需为 1–${MAX_ROUNDS} 的整数。`);
     if (locked.length >= settings.rounds) throw new Error('所有轮次已完成。如需继续，请增加总轮数。');
@@ -142,6 +151,8 @@
     const lines = [settings.title || '羽毛球双打'];
     if (settings.date || settings.time) lines.push(`时间：${[settings.date, settings.time].filter(Boolean).join(' ')}`);
     if (settings.location) lines.push(`地点：${settings.location}`);
+    const range = parseTime(settings.time || '');
+    if (settings.roundMode === 'auto' && range && settings.durationMinutes !== range.durationMinutes) lines.push(`排轮用时：${settings.durationMinutes} 分钟（活动时段 ${range.durationMinutes} 分钟，已扣除热身和休息）`);
     lines.push('模式：自由双打轮转');
     if (scope === 'all') lines.push(settings.roundMode === 'auto' ? `预排 ${schedule.length} 轮（含备用，到时间停止，无需全部打完）` : `共 ${schedule.length} 轮`);
     schedule.forEach((round, index) => {
@@ -153,7 +164,7 @@
     return lines.join('\n');
   }
   function emptyState() {
-    return { version: 1, raw: '', parsedRaw: '', people: [], settings: { title: '羽毛球双打', date: '', time: '', location: '', notes: '', courts: 2, roundMode: 'auto', durationMinutes: 120, matchMinutes: 15, rounds: 12 }, schedule: [], completed: 0, stale: false };
+    return { version: 1, raw: '', parsedRaw: '', timeSource: 'manual', people: [], settings: { title: '羽毛球双打', date: '', time: '', location: '', notes: '', courts: 2, roundMode: 'auto', durationMinutes: 120, matchMinutes: 15, rounds: 12 }, schedule: [], completed: 0, stale: false };
   }
   function readBackup(value) {
     if (!value || value.version !== 1 || !Array.isArray(value.people) || value.people.length > MAX_PEOPLE || !value.settings || !Array.isArray(value.schedule) || value.schedule.length > MAX_ROUNDS) throw new Error('不是有效的活动备份。');
@@ -199,12 +210,13 @@
     const estimate = estimateRounds(settings.durationMinutes, settings.matchMinutes);
     if (oldFormat && settings.roundMode === 'auto') settings.rounds = estimate.totalRounds;
     // A stale backup is allowed, but unsafe unmarked changes must not be shareable.
-    const inconsistent = schedule.length && (schedule.length !== settings.rounds || schedule.slice(value.completed).some(r => r.matches.some(m => m.court > settings.courts || m.teams.flat().some(id => !people.find(p => p.id === id).active))));
+    const inconsistent = schedule.length && (timeProblem(settings) || schedule.length !== settings.rounds || schedule.slice(value.completed).some(r => r.matches.some(m => m.court > settings.courts || m.teams.flat().some(id => !people.find(p => p.id === id).active))));
     const raw = typeof value.raw === 'string' ? value.raw.slice(0, 50000) : '';
     const parsedRaw = typeof value.parsedRaw === 'string' ? value.parsedRaw.slice(0, 50000) : raw;
-    return { version: 1, raw, parsedRaw, people, settings, schedule, completed: value.completed, stale: Boolean(value.stale || inconsistent) };
+    const timeSource = ['manual', 'relay', 'retained'].includes(value.timeSource) ? value.timeSource : 'manual';
+    return { version: 1, raw, parsedRaw, timeSource, people, settings, schedule, completed: value.completed, stale: Boolean(value.stale || inconsistent) };
   }
-  const api = { SAMPLE, MAX_PEOPLE, MAX_ROUNDS, id, parseTime, parseRelay, estimateRounds, generate, appendRounds, stats, groupText, emptyState, readBackup };
+  const api = { SAMPLE, MAX_PEOPLE, MAX_ROUNDS, id, parseTime, parseRelay, estimateRounds, timeProblem, generate, appendRounds, stats, groupText, emptyState, readBackup };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Doubles = api;
 })(globalThis);

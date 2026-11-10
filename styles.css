@@ -14,3 +14,21 @@ body{padding-bottom:calc(94px + env(safe-area-inset-bottom))}main{padding-inline
 /* Disable double-tap zoom while keeping scrolling and pinch zoom available. */
 html,body,button,a,input,select,textarea,summary,label{touch-action:manipulation}
 .estimate-note{padding:12px 14px;border-left:3px solid var(--green);background:var(--soft);font-size:13px;color:var(--ink)}input[readonly]{background:var(--soft);font-weight:700}#append-rounds{margin-top:22px;min-height:48px}#roundMode{min-height:46px}
+/* Keep the relay input and its action visually separate. */
+.relay-actions{margin-top:12px;gap:12px;flex-wrap:wrap}
+.relay-actions .hint{flex:1 1 144px;min-width:0}
+.relay-actions #parse{flex:0 0 auto;white-space:nowrap}
+.text-button,.remove,footer button{min-width:44px;min-height:44px}
+.match:only-child{border-radius:8px}
+/* The close control has its own column so long notices never cover it. */
+.notice{display:grid;grid-template-columns:minmax(0,1fr) 44px;align-items:start;gap:8px;margin:0;padding:12px}
+#notice-text{min-width:0;align-self:center;overflow-wrap:anywhere}
+.notice-dismiss{display:grid;place-items:center;min-width:44px;min-height:44px;padding:0;background:transparent;color:inherit;font-size:24px;border-radius:4px}
+.notice-dismiss:hover{background:var(--line)}
+#time-status:empty{display:none}
+.time-warning{padding:10px 12px;border:1px solid var(--line);border-radius:6px;background:var(--warn-bg);color:var(--warn)}
+@media(max-width:680px){
+  .fields .mobile-wide{grid-column:1/-1}
+  .notice{top:auto;bottom:calc(90px + env(safe-area-inset-bottom));max-height:min(32vh,calc(100dvh - 170px))}
+}
+@media(max-width:360px){.mobile-break{display:initial}}

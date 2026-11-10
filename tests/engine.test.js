@@ -128,3 +128,20 @@ test('旧版七轮草稿转为自动预排，进行中的旧活动保留手动�
   assert.equal(inProgress.settings.roundMode, 'manual');
   assert.equal(inProgress.settings.rounds, 7); assert.equal(inProgress.completed, 1);
 });
+test('打球时长超过活动时段时拒绝排赛，短用时在通知中明确区分', () => {
+  const p = players(8), settings = { ...E.emptyState().settings, time: '周二 19:00–21:00', durationMinutes: 180 };
+  assert.match(E.timeProblem(settings), /180.*超过.*120/);
+  assert.throws(() => E.generate(p, settings), /超过/);
+  settings.durationMinutes = 60;
+  assert.equal(E.timeProblem(settings), '');
+  const schedule = E.generate(p, settings, [], rng());
+  const text = E.groupText(p, settings, schedule);
+  assert.ok(text.includes('19:00–21:00'));
+  assert.ok(text.includes('排轮用时：60 分钟（活动时段 120 分钟'));
+});
+test('时间来源可跨备份保留，旧备份使用手动来源', () => {
+  const state = E.emptyState(); state.timeSource = 'retained';
+  assert.equal(E.readBackup(state).timeSource, 'retained');
+  delete state.timeSource;
+  assert.equal(E.readBackup(state).timeSource, 'manual');
+});

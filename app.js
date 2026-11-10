@@ -5,17 +5,38 @@
   const clone = value => JSON.parse(JSON.stringify(value));
   let manualRounds = null;
   let currentView = 'setup';
+  const scrollPositions = { setup: null, results: null };
   const pendingRelay = () => !state.completed && state.raw !== state.parsedRaw;
-  function setView(view) { currentView = view; document.querySelector('.workspace').dataset.view = view; $('tab-setup').setAttribute('aria-pressed', String(view === 'setup')); $('tab-results').setAttribute('aria-pressed', String(view === 'results')); updateMobileAction(); }
-  function updateMobileAction() { const b = $('mobile-primary'); b.textContent = state.raw !== state.parsedRaw && !state.completed ? '接龙已修改 · 重新识别名单' : currentView === 'results' && state.schedule.length ? (state.stale ? '赛程待更新 · 返回设置' : ($('scope').value === 'all' ? '复制完整赛程群通知' : `复制第 ${Number($('scope').value) + 1} 轮群通知`)) : state.people.length ? $('generate').textContent : '识别接龙名单'; }
-  function notify(message, error = false) { $('notice').textContent = message; $('notice').className = `notice${error ? ' error' : ''}`; $('notice').hidden = !message; clearTimeout(notify.timer); if (message && !error) notify.timer = setTimeout(() => { $('notice').hidden = true; }, 5500); }
+  const timeProblem = () => E.timeProblem(state.settings);
+  function setView(view, { reset = false } = {}) {
+    scrollPositions[currentView] = window.scrollY;
+    currentView = view;
+    const workspace = document.querySelector('.workspace');
+    workspace.dataset.view = view;
+    $('tab-setup').setAttribute('aria-pressed', String(view === 'setup'));
+    $('tab-results').setAttribute('aria-pressed', String(view === 'results'));
+    updateMobileAction();
+    if (window.innerWidth <= 680) {
+      const top = workspace.getBoundingClientRect().top + window.scrollY - document.querySelector('.view-tabs').offsetHeight;
+      window.scrollTo({ top: reset ? top : scrollPositions[view] ?? top, behavior: 'auto' });
+    }
+  }
+  function updateMobileAction() {
+    const b = $('mobile-primary'), problem = timeProblem();
+    b.disabled = false;
+    if (pendingRelay()) b.textContent = '接龙已修改 · 重新识别名单';
+    else if (currentView === 'results' && state.schedule.length) b.textContent = problem ? '返回设置核对活动时间' : state.stale ? '赛程待更新 · 返回设置' : $('scope').value === 'all' ? '复制完整赛程群通知' : `复制第 ${Number($('scope').value) + 1} 轮群通知`;
+    else if (problem) { b.textContent = '请先核对活动时间'; b.disabled = true; }
+    else b.textContent = state.people.length ? $('generate').textContent : '识别接龙名单';
+  }
+  function notify(message, error = false) { $('notice-text').textContent = message; $('notice').className = `notice${error ? ' error' : ''}`; $('notice').hidden = !message; clearTimeout(notify.timer); if (message && !error) notify.timer = setTimeout(() => { $('notice').hidden = true; }, 5500); }
   function remember() { history.push(clone(state)); if (history.length > 20) history.shift(); }
   function save() {
     try { localStorage.setItem(storageKey, JSON.stringify(state)); storageFailed = false; }
     catch { storageFailed = true; }
     $('save-status').textContent = storageFailed ? '本机保存不可用，请导出备份' : '草稿已保存在当前浏览器';
   }
-  function mutate(change, stale = false) { remember(); change(); if (stale && state.schedule.length) state.stale = true; save(); render(); }
+  function mutate(change, stale = false, { keepRoster = false } = {}) { remember(); change(); if (stale && state.schedule.length) state.stale = true; save(); render({ keepRoster }); }
   function node(tag, className, text) { const n = document.createElement(tag); if (className) n.className = className; if (text !== undefined) n.textContent = text; return n; }
   function button(text, className, click) { const b = node('button', className, text); b.type = 'button'; b.addEventListener('click', click); return b; }
   function toggle(label, checked, change, className = '') {
@@ -24,23 +45,24 @@
     wrap.append(input, document.createTextNode(label)); return wrap;
   }
   function renderRoster() {
-    $('roster-section').hidden = !state.people.length;
-    $('people-count').textContent = state.people.filter(p => p.active).length;
     const roster = $('roster'); roster.replaceChildren();
     state.people.forEach((p, index) => {
       const item = node('div', 'person'), row = node('div', 'person-row');
       const name = document.createElement('input'); name.type = 'text'; name.value = p.name; name.maxLength = 100; name.setAttribute('aria-label', `第 ${index + 1} 位参赛者姓名`);
-      name.addEventListener('change', () => mutate(() => { p.name = name.value.trim(); }, true));
+      name.addEventListener('change', () => mutate(() => {
+        p.name = name.value.trim(); name.value = p.name;
+        item.querySelector('.remove').setAttribute('aria-label', `移除 ${p.name || '参赛者'}`);
+      }, true, { keepRoster: true }));
       const remove = button('×', 'remove', () => {
         const played = state.schedule.some(r => r.matches.some(m => m.teams.flat().includes(p.id)));
         if (played) { mutate(() => { p.active = false; }, true); notify('此人已有赛程记录，已保留记录并移出后续比赛。'); }
         else mutate(() => { state.people = state.people.filter(person => person.id !== p.id); }, true);
       });
       remove.setAttribute('aria-label', `移除 ${p.name || '参赛者'}`);
-      row.append(node('span', 'person-index', String(index + 1).padStart(2, '0')), name, toggle('参与', p.active, checked => mutate(() => { p.active = checked; }, true)), remove);
+      row.append(node('span', 'person-index', String(index + 1).padStart(2, '0')), name, toggle('参与', p.active, checked => mutate(() => { p.active = checked; }, true, { keepRoster: true })), remove);
       item.append(row);
       if (p.note) item.append(node('p', 'person-note', p.note));
-      if (p.note || !p.confirmed) item.append(toggle('已核对为一位独立参赛者', p.confirmed, checked => mutate(() => { p.confirmed = checked; }, true), 'confirm-label'));
+      if (p.note || !p.confirmed) item.append(toggle('已核对为一位独立参赛者', p.confirmed, checked => mutate(() => { p.confirmed = checked; }, true, { keepRoster: true }), 'confirm-label'));
       roster.append(item);
     });
   }
@@ -88,11 +110,13 @@
   }
   function filterRounds() { document.querySelectorAll('#schedule .round').forEach(r => { r.hidden = $('view-round').value !== 'all' && r.dataset.round !== $('view-round').value; }); }
   function updateOutput() {
-    $('copy').disabled = state.stale || pendingRelay() || !state.schedule.length;
+    const problem = timeProblem();
+    $('generate').disabled = Boolean(problem);
+    $('copy').disabled = state.stale || pendingRelay() || Boolean(problem) || !state.schedule.length;
     updateMobileAction();
-    $('append-rounds').disabled = state.stale || pendingRelay() || state.schedule.length >= E.MAX_ROUNDS;
-    document.querySelectorAll('.round-head button').forEach(button => { button.disabled = state.stale || pendingRelay(); });
-    $('output').value = pendingRelay() ? '接龙已修改，请重新识别名单并生成赛程后复制。' : state.stale ? '赛程待更新，请重新生成后复制。' : E.groupText(state.people, state.settings, state.schedule, $('scope').value);
+    $('append-rounds').disabled = state.stale || pendingRelay() || Boolean(problem) || state.schedule.length >= E.MAX_ROUNDS;
+    document.querySelectorAll('.round-head button').forEach(button => { button.disabled = state.stale || pendingRelay() || Boolean(problem); });
+    $('output').value = problem || (pendingRelay() ? '接龙已修改，请重新识别名单并生成赛程后复制。' : state.stale ? '赛程待更新，请重新生成后复制。' : E.groupText(state.people, state.settings, state.schedule, $('scope').value));
   }
   function recalculateRounds() {
     if (state.settings.roundMode === 'auto') {
@@ -103,7 +127,15 @@
   function renderEstimate() {
     const auto = state.settings.roundMode === 'auto'; $('rounds').readOnly = auto;
     $('durationMinutes').disabled = !auto; $('matchMinutes').disabled = !auto;
-    $('append-rounds').disabled = state.stale || pendingRelay() || state.schedule.length >= E.MAX_ROUNDS;
+    const problem = timeProblem(), range = E.parseTime(state.settings.time);
+    $('durationMinutes').setAttribute('aria-invalid', String(Boolean(problem)));
+    $('time-status').textContent = problem || (state.timeSource === 'retained'
+      ? '本次未识别到时间，正在沿用已有设置，请核对活动时间和可打球时长。'
+      : range ? `活动时段共 ${range.durationMinutes} 分钟；可打球时长用于排轮，可扣除热身和休息。`
+        : '未识别到有效时间范围，请手动核对可打球时长。');
+    $('time-status').classList.toggle('time-warning', Boolean(problem) || state.timeSource === 'retained');
+    $('generate').disabled = Boolean(problem);
+    $('append-rounds').disabled = state.stale || pendingRelay() || Boolean(problem) || state.schedule.length >= E.MAX_ROUNDS;
     if (!auto) { $('round-estimate').textContent = '手动设置轮数。活动结束时可随时停止，也可继续补轮。'; return; }
     try {
       const e = E.estimateRounds(state.settings.durationMinutes, state.settings.matchMinutes), people = state.people.filter(p => p.active).length;
@@ -111,25 +143,35 @@
       const perPerson = people >= 4 ? `每人预计约 ${(e.estimatedRounds * matches * 4 / people).toFixed(1)} 场。` : '识别名单后显示每人预计场次。';
       $('round-estimate').textContent = `预计正常打 ${e.estimatedRounds} 轮，预排 ${state.settings.rounds} 轮（含备用）。${perPerson}平均用时含换场和短休，多块场地同时比赛算一轮。到时间就停止，无需全部打完。`;
     } catch (error) { $('round-estimate').textContent = error.message; }
-    $('append-rounds').disabled = state.stale || pendingRelay() || state.schedule.length >= E.MAX_ROUNDS;
+    $('append-rounds').disabled = state.stale || pendingRelay() || Boolean(problem) || state.schedule.length >= E.MAX_ROUNDS;
   }
   function completeRound() {
-    if (state.stale || pendingRelay()) return;
+    if (state.stale || pendingRelay() || timeProblem()) return;
     try {
+      const singleRound = $('view-round').value !== 'all';
       let extended = null;
       if (state.settings.roundMode === 'auto' && state.schedule.length - state.completed - 1 <= 2 && state.schedule.length < E.MAX_ROUNDS) extended = E.appendRounds(state.people, state.settings, state.schedule, Math.min(4, E.MAX_ROUNDS - state.schedule.length));
       const added = extended ? extended.length - state.schedule.length : 0;
       mutate(() => { state.completed++; if (extended) { state.schedule = extended; state.settings.rounds = extended.length; } });
+      if (singleRound && state.completed < state.schedule.length) selectRound(state.completed);
       if (added) notify(`本轮已完成，已自动补充后续 ${added} 轮。到时间即可停止。`);
+      else if (state.completed === state.schedule.length) notify('全部预排轮次已完成。需要继续时，可点击「再补 4 轮」。');
     } catch (error) { notify(error.message, true); }
   }
-  function render() {
+  function selectRound(index) {
+    $('view-round').value = String(index); $('scope').value = String(index);
+    filterRounds(); updateOutput();
+  }
+  function render({ keepRoster = false } = {}) {
     $('raw').value = state.raw; $('raw').disabled = state.completed > 0; $('sample').disabled = state.completed > 0; $('parse').disabled = state.completed > 0; $('raw').title = state.completed ? '已有完成轮次，请通过名单添加、编辑或取消参与。' : ''; 
     for (const [field, value] of Object.entries(state.settings)) $(field).value = value;
     $('undo').disabled = !history.length;
     $('parse').textContent = state.completed ? '历史已锁定' : '识别名单';
     $('generate').textContent = state.completed ? '保留已完成轮次，重排后续' : state.schedule.length ? '重新生成赛程 ↗' : '生成多轮赛程 ↗';
-    renderRoster(); renderSchedule(); renderEstimate(); updateMobileAction();
+    $('roster-section').hidden = !state.people.length;
+    $('people-count').textContent = state.people.filter(p => p.active).length;
+    if (!keepRoster) renderRoster();
+    renderSchedule(); renderEstimate(); updateMobileAction();
   }
   $('raw').addEventListener('input', () => { state.raw = $('raw').value; save(); updateOutput(); });
   $('sample').addEventListener('click', () => { mutate(() => { state.raw = E.SAMPLE; }); notify('已填入你的接龙示例，点击「识别名单」继续。'); });
@@ -138,10 +180,11 @@
     const parsed = E.parseRelay(state.raw);
     if (!parsed.people.length) { notify('未识别到参赛者。请使用「1. 姓名」格式。', true); return; }
     if (parsed.people.length > E.MAX_PEOPLE) { notify(`最多支持 ${E.MAX_PEOPLE} 位参赛者。`, true); return; }
-    mutate(() => { state.people = parsed.people; state.parsedRaw = state.raw; state.schedule = []; state.stale = false; if (parsed.time) state.settings.time = parsed.time; if (parsed.durationMinutes) state.settings.durationMinutes = parsed.durationMinutes; recalculateRounds(); });
+    mutate(() => { state.people = parsed.people; state.parsedRaw = state.raw; state.schedule = []; state.stale = false; state.timeSource = parsed.time ? 'relay' : 'retained'; if (parsed.time) state.settings.time = parsed.time; if (parsed.durationMinutes) state.settings.durationMinutes = parsed.durationMinutes; recalculateRounds(); });
+    scrollPositions.results = null;
     $('source-details').hidden = false;
-    $('parse-details').textContent = parsed.ignored.length ? `未作为名单导入：${parsed.ignored.join('；')}。日期和地点请在下方填写；请核对识别出的时间。` : '已按每行一位参赛者识别，请核对名字与人数。';
-    notify(`已识别 ${parsed.people.length} 人${parsed.people.some(p => !p.confirmed) ? '，有待核对项' : ''}。请核对名单后生成赛程。`);
+    $('parse-details').textContent = `${parsed.ignored.length ? `未作为名单导入：${parsed.ignored.join('；')}。` : ''}${parsed.time ? '已识别时间，请核对；日期和地点请手动填写。' : '本次未识别到时间，沿用已有设置，请核对活动时间和可打球时长。'}`;
+    notify(`已识别 ${parsed.people.length} 人${parsed.people.some(p => !p.confirmed) ? '，有待核对项' : ''}。${parsed.time ? '请核对名单后生成赛程。' : '本次未识别到时间，请核对沿用的设置。'}`);
   });
   $('add').addEventListener('click', () => {
     if (state.people.length >= E.MAX_PEOPLE) { notify(`最多支持 ${E.MAX_PEOPLE} 位参赛者。`, true); return; }
@@ -157,14 +200,15 @@
     mutate(() => {
       if (field === 'roundMode' && value === 'auto') manualRounds = state.settings.rounds;
       state.settings[field] = value;
+      if (field === 'time' || field === 'durationMinutes') state.timeSource = 'manual';
       if (field === 'roundMode' && value === 'manual' && manualRounds !== null) state.settings.rounds = manualRounds;
       if (field === 'time') { const parsed = E.parseTime(value); if (parsed) { state.settings.time = parsed.time; state.settings.durationMinutes = parsed.durationMinutes; } }
       if (['roundMode','durationMinutes','matchMinutes','time'].includes(field)) recalculateRounds();
     }, ['courts','rounds','roundMode','durationMinutes','matchMinutes','time'].includes(field));
   });
   $('append-rounds').addEventListener('click', () => {
-    if (state.stale || pendingRelay()) return;
-    try { const schedule = E.appendRounds(state.people, state.settings, state.schedule, Math.min(4, E.MAX_ROUNDS - state.schedule.length)); mutate(() => { state.schedule = schedule; state.settings.rounds = schedule.length; }); notify('已补充后续轮次，现有对阵保持不变。到时间即可停止。'); }
+    if (state.stale || pendingRelay() || timeProblem()) return;
+    try { const advance = state.completed === state.schedule.length && $('view-round').value !== 'all'; const schedule = E.appendRounds(state.people, state.settings, state.schedule, Math.min(4, E.MAX_ROUNDS - state.schedule.length)); mutate(() => { state.schedule = schedule; state.settings.rounds = schedule.length; }); if (advance) selectRound(state.completed); notify('已补充后续轮次，现有对阵保持不变。到时间即可停止。'); }
     catch (error) { notify(error.message, true); }
   });
   $('generate').addEventListener('click', () => {
@@ -173,17 +217,27 @@
       const schedule = E.generate(state.people, state.settings, state.schedule.slice(0, state.completed));
       mutate(() => { state.schedule = schedule; state.stale = false; });
       notify(`已生成 ${schedule.length} 轮赛程${state.completed ? `，前 ${state.completed} 轮保持锁定` : ''}。可在下方复制群通知。`);
-      setView('results'); if (window.innerWidth <= 680) document.querySelector('.view-tabs').scrollIntoView({ block: 'start' });
+      setView('results', { reset: true });
     } catch (error) { notify(error.message, true); }
   });
   $('tab-setup').addEventListener('click', () => setView('setup'));
   $('tab-results').addEventListener('click', () => setView('results'));
-  $('mobile-primary').addEventListener('click', () => { if (state.raw !== state.parsedRaw && !state.completed) { setView('setup'); $('parse').click(); return; } if (currentView === 'results' && state.schedule.length) { if (state.stale) setView('setup'); else $('copy').click(); } else $(state.people.length ? 'generate' : 'parse').click(); });
+  $('mobile-primary').addEventListener('click', () => { if (state.raw !== state.parsedRaw && !state.completed) { setView('setup'); $('parse').click(); return; } if (currentView === 'results' && state.schedule.length) { if (state.stale || timeProblem()) setView('setup'); else $('copy').click(); } else $(state.people.length ? 'generate' : 'parse').click(); });
   $('view-round').addEventListener('change', () => { filterRounds(); $('scope').value = $('view-round').value; updateOutput(); });
   $('scope').addEventListener('change', updateOutput);
-  if (window.visualViewport) { const resize = () => document.body.classList.toggle('keyboard-open', window.innerHeight - window.visualViewport.height > 140); window.visualViewport.addEventListener('resize', resize); }
+  function updateKeyboardState() {
+    const viewport = window.visualViewport, active = document.activeElement;
+    const editable = active && (active.isContentEditable || active.matches('textarea:not([readonly]):not(:disabled), input:not([readonly]):not(:disabled):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=button]):not([type=submit])'));
+    const open = viewport && editable && Math.abs(viewport.scale - 1) < 0.05 && window.innerHeight - viewport.height > 140;
+    document.body.classList.toggle('keyboard-open', Boolean(open));
+  }
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', updateKeyboardState);
+  document.addEventListener('focusin', updateKeyboardState);
+  document.addEventListener('focusout', () => requestAnimationFrame(updateKeyboardState));
+  window.addEventListener('resize', updateKeyboardState);
+  $('notice-dismiss').addEventListener('click', () => { clearTimeout(notify.timer); $('notice').hidden = true; });
   $('copy').addEventListener('click', async () => {
-    if (state.stale || pendingRelay() || !state.schedule.length) return;
+    if (state.stale || pendingRelay() || timeProblem() || !state.schedule.length) return;
     try {
       await navigator.clipboard.writeText($('output').value);
       notify('群通知已复制。请粘贴到微信群发送。');
