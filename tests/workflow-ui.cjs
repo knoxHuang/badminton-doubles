@@ -51,7 +51,7 @@ async function testConflict(page) {
     '180 minutes must not generate a schedule for the unchanged 19:00–21:00 range');
   assert.equal(await page.locator('#copy').isDisabled(), true, 'conflicting duration must block copying');
   assert.equal(await page.locator('#append-rounds').isDisabled(), true, 'conflicting duration must block appending');
-  assert.equal(await page.locator('#mobile-complete').isDisabled(), true, 'conflicting duration must block completion');
+  assert.equal(await page.locator('#mobile-primary').isDisabled(), true, 'conflicting duration must block completion');
   assert.match(await page.locator('#time-status').innerText(), /超过|冲突|大于|不一致/);
   assert.equal(await page.locator('#time-status').isVisible(), true);
 
@@ -103,15 +103,17 @@ async function testSingleRoundProgress(page) {
   await page.locator('#mobile-primary').click();
   const original = (await readState(page)).schedule;
   await page.locator('#view-round').selectOption('0');
-  await page.locator('#mobile-complete').click();
-  assert.equal(await page.locator('#view-round').inputValue(), '1', 'completion must advance to the next single round');
-  assert.equal(await readScope(page), '1', 'copy scope must advance with the visible round');
-  assert.equal(await page.locator('#schedule .round:visible').getAttribute('data-round'), '1');
-  await page.locator('#mobile-complete').click();
+  await page.locator('#mobile-primary').click();
+  assert.equal(await page.locator('#view-round').inputValue(), 'all');
+  assert.equal(await readScope(page), 'all', 'Completion must not change the text copy scope');
+  assert.equal(await page.locator('#schedule .round:visible').count(), 2);
+  assert.equal(await page.locator('#schedule .round.current').getAttribute('data-round'), '1');
+  await page.locator('#mobile-primary').click();
   const completedNotice = await page.locator('#notice').innerText();
   assert.match(completedNotice, /全部|所有/);
   assert.match(completedNotice, /完成/);
   assert.equal((await readState(page)).completed, 2);
+  assert.equal(await page.locator('#mobile-primary').isDisabled(), true, 'Owner completion must stop after all manual rounds finish');
   assert.equal(await page.locator('#append-rounds').isDisabled(), false);
   await page.locator('#append-rounds').click();
   const extended = (await readState(page)).schedule;
@@ -125,9 +127,10 @@ async function testSingleRoundAutoAppend(page) {
   const original = (await readState(page)).schedule;
   await page.locator('#view-round').selectOption('0');
   for (let completed = 1; completed <= 10; completed++) {
-    await page.locator('#mobile-complete').click();
-    assert.equal(await page.locator('#view-round').inputValue(), String(completed));
-    assert.equal(await readScope(page), String(completed));
+    await page.locator('#mobile-primary').click();
+    assert.equal(await page.locator('#view-round').inputValue(), 'all');
+    assert.equal(await page.locator('#schedule .round.current').getAttribute('data-round'), String(completed));
+    assert.equal(await readScope(page), 'all');
   }
   const state = await readState(page);
   assert.equal(state.completed, 10);
@@ -145,7 +148,7 @@ async function testPartnerRotationAndUpgrade(page) {
   });
   assert.equal(firstCycle.completePlayers, 8);
   assert.ok(firstCycle.byPlayer.every(p => p.covered === 7));
-  for (let i = 0; i < 3; i++) await page.locator('#mobile-complete').click();
+  for (let i = 0; i < 3; i++) await page.locator('#mobile-primary').click();
   const locked = (await readState(page)).schedule.slice(0, 3);
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('doubles-club-v1'));
@@ -165,12 +168,12 @@ async function testCollapsedPreviewCopyFallback(page) {
   await page.locator('#mobile-primary').click();
   assert.equal(await page.locator('#share-preview').evaluate(el => el.open), false);
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied'); } } }));
-  await page.locator('#mobile-primary').click();
+  await page.locator('#copy').click();
   await page.waitForFunction(() => document.getElementById('share-preview').open);
   assert.equal(await page.locator('#output').evaluate(el => el.selectionEnd - el.selectionStart), (await page.locator('#output').inputValue()).length);
   assert.match(await page.locator('#notice-text').innerText(), /自动复制不可用/);
   await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.testCopiedText = text; } } }));
-  await page.locator('#mobile-primary').click();
+  await page.locator('#copy').click();
   await page.waitForFunction(() => typeof window.testCopiedText === 'string');
   assert.equal(await page.evaluate(() => window.testCopiedText), await page.locator('#output').inputValue());
 }

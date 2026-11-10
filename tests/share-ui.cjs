@@ -36,9 +36,9 @@ async function pageIn(browser) {
     for (const selector of ['#tab-setup', '#mobile-complete', '#append-rounds', '#import', '#clear']) assert.equal(await receiver.page.locator(selector).isVisible(), false, selector);
     assert.equal(await receiver.page.locator('.round-head button').count(), 0);
     await receiver.page.locator('#round-next').click();
-    assert.equal(await receiver.page.locator('#view-round').inputValue(), '1');
+    assert.equal(await receiver.page.locator('#view-round').inputValue(), 'all');
     assert.equal(await receiver.page.evaluate(() => localStorage.getItem('doubles-club-v1')), privateDraft);
-    await owner.page.locator('#mobile-complete').click();
+    await owner.page.locator('#mobile-primary').click();
     await receiver.page.reload();
     assert.match(await receiver.page.locator('#schedule-meta').innerText(), /0 \/ 14/);
     assert.equal(await receiver.page.evaluate(() => localStorage.getItem('doubles-club-v1')), privateDraft);

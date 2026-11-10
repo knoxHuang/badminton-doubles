@@ -54,8 +54,9 @@ async function main() {
     });
     await page.reload();
     await page.waitForFunction(() => document.getElementById('tab-results').getAttribute('aria-pressed') === 'true');
-    assert.equal(await page.locator('#view-round').inputValue(), '0', 'Restored schedule must start on the current unfinished round');
-    assert.equal(await page.locator('#schedule .round:visible').count(), 1);
+    assert.equal(await page.locator('#view-round').inputValue(), 'all', 'Restored schedule must display all rounds');
+    assert.equal(await page.locator('#schedule .round.current').getAttribute('data-round'), '0');
+    assert.equal(await page.locator('#schedule .round:visible').count(), 12);
     await tapOnce(page, '#tab-setup');
     return { context, page };
   }
@@ -140,9 +141,9 @@ async function main() {
         await page.evaluate(() => scrollTo(0, 1100)); await settle(page);
         const setupY = await page.evaluate(() => scrollY);
         await tapOnce(page, '#tab-results');
-        const firstTop = await page.locator('.results').evaluate(el => el.getBoundingClientRect().top);
+        const firstTop = await page.locator('.round.current').evaluate(el => el.getBoundingClientRect().top);
         assert.ok(firstTop >= 0 && firstTop < page.viewportSize().height / 2,
-          `Results heading must remain visible near the top: y=${firstTop}`);
+          `Current round must remain visible near the top: y=${firstTop}`);
         await page.locator('#view-round').selectOption('all');
         await page.evaluate(() => scrollTo(0, 1000)); await settle(page);
         const resultsY = await page.evaluate(() => scrollY);
@@ -210,23 +211,27 @@ async function main() {
         const text = await page.locator('#output').inputValue();
         for (const value of ['手机测试活动', '2026-11-10', '测试球馆', '到时间停止']) assert.ok(text.includes(value), value);
       });
-      await check(width, 'round navigation changes the visible and copied round together', async page => {
+      await check(width, 'round navigation focuses a round without hiding matches or changing copy scope', async page => {
         await tapOnce(page, '#tab-results');
-        assert.equal(await page.locator('#view-round').inputValue(), '0');
+        assert.equal(await page.locator('#view-round').inputValue(), 'all');
+        await assertScope(page, 'all');
+        await page.locator('#scope').selectOption('3');
         await tapOnce(page, '#round-next');
-        assert.equal(await page.locator('#view-round').inputValue(), '1'); await assertScope(page, '1');
-        assert.match(await page.locator('#round-position').innerText(), /2/);
+        assert.equal(await page.locator('#schedule .round:visible').count(), 12); await assertScope(page, '3');
         await tapOnce(page, '#round-prev');
-        assert.equal(await page.locator('#view-round').inputValue(), '0'); await assertScope(page, '0');
-        await tapOnce(page, '#round-next'); await tapOnce(page, '#round-next');
+        assert.equal(await page.locator('#schedule .round:visible').count(), 12); await assertScope(page, '3');
+        await page.locator('#view-round').selectOption('5');
+        await settle(page);
+        assert.equal(await page.locator('#view-round').inputValue(), 'all');
+        assert.equal(await page.locator('#schedule .round:visible').count(), 12); await assertScope(page, '3');
         await tapOnce(page, '#round-current');
-        assert.equal(await page.locator('#view-round').inputValue(), '0'); await assertScope(page, '0');
-        await page.locator('#view-round').selectOption('all');
-        assert.equal(await page.locator('#schedule .round:visible').count(), 12); await assertScope(page, 'all');
+        const top = await page.locator('#schedule .round.current').evaluate(el => el.getBoundingClientRect().top);
+        assert.ok(top >= 0 && top < page.viewportSize().height / 2, `Current round is not in view: ${top}`);
+        assert.equal(await page.locator('#schedule .round.current').getAttribute('data-round'), '0');
       });
       await check(width, 'match cards expose a heading and two distinct teams', async page => {
         await tapOnce(page, '#tab-results');
-        const cards = page.locator('#schedule .round:visible .match');
+        const cards = page.locator('#schedule .round.current .match');
         assert.equal(await cards.count(), 2);
         for (const card of await cards.all()) {
           assert.equal(await card.locator('.match-heading').count(), 1);
@@ -249,17 +254,19 @@ async function main() {
         const after = await page.evaluate(() => JSON.parse(localStorage.getItem('doubles-club-v1')));
         assert.deepEqual(after.people, before.people); assert.deepEqual(after.schedule, before.schedule);
       });
-      await check(width, 'fixed completion advances the current round and is hidden for future rounds', async page => {
+      await check(width, 'fixed primary completes the current round while the secondary shares', async page => {
         await tapOnce(page, '#tab-results');
         assert.equal(await page.locator('#mobile-complete').isVisible(), true);
+        assert.match(await page.locator('#mobile-complete').innerText(), /分享|复制链接/);
+        assert.match(await page.locator('#mobile-primary').innerText(), /完成.*1|1.*完成/);
         await tapOnce(page, '#round-next');
-        assert.equal(await page.locator('#mobile-complete').isVisible(), false);
-        await tapOnce(page, '#round-current');
-        await tapOnce(page, '#mobile-complete');
-        assert.equal(await page.locator('#view-round').inputValue(), '1'); await assertScope(page, '1');
-        assert.equal(await page.locator('#mobile-complete').isVisible(), true);
+        assert.equal(await page.locator('#schedule .round:visible').count(), 12);
+        await tapOnce(page, '#mobile-primary');
+        assert.equal(await page.locator('#view-round').inputValue(), 'all'); await assertScope(page, 'all');
+        assert.equal(await page.locator('#schedule .round.current').getAttribute('data-round'), '1');
         const state = await page.evaluate(() => JSON.parse(localStorage.getItem('doubles-club-v1')));
         assert.equal(state.completed, 1);
+        assert.equal(await page.locator('#schedule .round:visible').count(), state.schedule.length);
       });
       await check(width, 'partner coverage is complete and readable', async page => {
         await tapOnce(page, '#tab-results');
