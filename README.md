@@ -40,9 +40,14 @@
 后续更新在 `main` 提交，运行测试后推送：
 
 ```sh
+npm run release -- 1.0.1
+git add package.json index.html version.json
+git commit -m "release: v1.0.1"
 git push origin main
 git push origin main:gh-pages
 ```
+
+每次发布先递增版本号，再提交生成的改动。`release` 命令同步 package.json、顶部版本号、静态资源查询参数和 version.json。页面会检查线上版本；也可在页尾点击“检查更新”。检查失败时只报告当前版本，不会显示“最新”。刷新到新版会保留本机草稿。
 
 此项目是公开仓库。报名信息在访问者自己的浏览器处理，草稿不会上传到 GitHub。
 

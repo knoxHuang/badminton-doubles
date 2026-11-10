@@ -1,6 +1,8 @@
 'use strict';
 (() => {
   const E = Doubles, $ = id => document.getElementById(id), storageKey = 'doubles-club-v1';
+  const currentVersion = $('app-version').dataset.version;
+  let availableVersion = null;
   let state = E.emptyState(), history = [], storageFailed = false;
   const clone = value => JSON.parse(JSON.stringify(value));
   let manualRounds = null;
@@ -281,6 +283,43 @@
   document.addEventListener('focusout', () => requestAnimationFrame(updateKeyboardState));
   window.addEventListener('resize', updateKeyboardState);
   $('notice-dismiss').addEventListener('click', () => { clearTimeout(notify.timer); $('notice').hidden = true; });
+  async function checkForUpdate() {
+    if (!/^https?:$/.test(location.protocol)) {
+      $('update-status').hidden = false;
+      $('update-status').textContent = `本地版本 v${currentVersion}。联网更新检查仅在网站中可用。`;
+      return;
+    }
+    $('check-update').disabled = true;
+    $('update-status').hidden = false;
+    $('update-status').textContent = '正在检查更新…';
+    $('apply-update').hidden = true;
+    try {
+      const url = new URL('version.json', location.href);
+      url.searchParams.set('t', Date.now());
+      const response = await fetch(url, { cache: 'no-store', signal: AbortSignal.timeout(10000) });
+      if (!response.ok) throw new Error('更新清单不可用');
+      const { version } = await response.json();
+      if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) throw new Error('更新清单格式无效');
+      const remote = version.split('.').map(Number), local = currentVersion.split('.').map(Number);
+      let newer = false;
+      for (let i = 0; i < 3; i++) if (remote[i] !== local[i]) { newer = remote[i] > local[i]; break; }
+      availableVersion = newer ? version : null;
+      $('apply-update').hidden = !newer;
+      $('update-status').textContent = newer ? `发现新版本 v${version}，当前为 v${currentVersion}。` : version === currentVersion ? `已检查，当前为最新版本 v${currentVersion}。` : `更新信息尚未同步，当前版本 v${currentVersion}。请稍后重试。`;
+    } catch {
+      availableVersion = null;
+      $('update-status').textContent = `暂时无法检查更新。当前版本 v${currentVersion}，请稍后重试。`;
+    } finally { $('check-update').disabled = false; }
+  }
+  $('check-update').addEventListener('click', checkForUpdate);
+  $('apply-update').addEventListener('click', () => {
+    if (!availableVersion) return;
+    save();
+    if (storageFailed) { notify('草稿保存失败，请先导出备份，再手动刷新页面。', true); return; }
+    const url = new URL(location.href);
+    url.searchParams.set('v', availableVersion);
+    location.assign(url.href);
+  });
   $('copy').addEventListener('click', async () => {
     if (state.stale || pendingRelay() || timeProblem() || !state.schedule.length) return;
     try {
@@ -325,4 +364,5 @@
   catch { notify('本机草稿不可用或格式无效。可重新粘贴接龙，或导入备份。', true); }
   render();
   if (state.schedule.length && !state.stale) setView('results', { reset: true });
+  if (/^https?:$/.test(location.protocol)) checkForUpdate();
 })();

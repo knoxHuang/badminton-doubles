@@ -6,12 +6,12 @@
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="粘贴微信接龙，安排羽毛球自由双打轮转，复制多轮对阵到微信群。">
   <title>换个搭档 · 羽毛球排赛</title>
-  <link rel="stylesheet" href="styles.css">
-  <script src="engine.js" defer></script>
-  <script src="app.js" defer></script>
+  <link rel="stylesheet" href="styles.css?v=1.0.0">
+  <script src="engine.js?v=1.0.0" defer></script>
+  <script src="app.js?v=1.0.0" defer></script>
 </head>
 <body>
-  <header class="topbar"><a class="brand" href="#">换个搭档<span>DOUBLES CLUB</span></a><span class="local-label">自由双打 · 本机保存</span></header>
+  <header class="topbar"><a class="brand" href="#">换个搭档<span id="app-version" class="app-version" data-version="1.0.0">v1.0.0</span></a><span class="local-label">自由双打 · 本机保存</span></header>
   <main>
     <div class="intro"><div><h1>接龙变赛程</h1><p class="subline">粘贴名单，轮换搭档，直接开打。</p></div></div>
     <div id="notice" class="notice" role="status" aria-live="polite" hidden><span id="notice-text"></span><button id="notice-dismiss" class="notice-dismiss" type="button" aria-label="关闭提示">×</button></div>
@@ -51,7 +51,7 @@
         </div>
       </section>
     </div>
-    <footer><span id="save-status">草稿仅保存在当前浏览器</span><div class="row"><button id="undo" class="text-button" disabled>撤销</button><button id="export" class="text-button">导出备份</button><button id="import" class="text-button">导入备份</button><button id="clear" class="text-button danger">清空</button><input id="file" type="file" accept="application/json,.json" hidden></div></footer>
+    <footer><span id="save-status">草稿仅保存在当前浏览器</span><div class="row"><button id="undo" class="text-button" disabled>撤销</button><button id="export" class="text-button">导出备份</button><button id="import" class="text-button">导入备份</button><button id="clear" class="text-button danger">清空</button><button id="check-update" class="text-button">检查更新</button><input id="file" type="file" accept="application/json,.json" hidden></div><p id="update-status" role="status" hidden></p><button id="apply-update" class="secondary" hidden>刷新到新版</button></footer>
   </main>
   <div class="mobile-action"><button id="mobile-complete" class="secondary" hidden>本轮完成</button><button id="mobile-primary" class="primary full">识别接龙名单</button></div>
 </body>

@@ -1,7 +1,10 @@
 {
   "name": "badminton-doubles",
+  "version": "1.0.0",
   "private": true,
   "scripts": {
+    "release": "node scripts/release.cjs",
+    "test:version": "node tests/version-ui.cjs",
     "test": "node --test tests/engine.test.js",
     "test:mobile": "node tests/mobile-ui.cjs",
     "test:workflow": "node tests/workflow-ui.cjs",
