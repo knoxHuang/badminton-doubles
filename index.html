@@ -13,7 +13,7 @@
 <body>
   <header class="topbar"><a class="brand" href="#">换个搭档<span>DOUBLES CLUB</span></a><span class="local-label">自由双打 · 本机保存</span></header>
   <main>
-    <div class="intro"><div><p class="eyebrow">LESS PLANNING. MORE PLAYING.</p><h1>人到齐，<br class="mobile-break">就开场。</h1><p class="subline">把接龙贴进来，把对阵带到球场。</p></div><div class="court-art" aria-hidden="true"><div></div><span>2 × 2</span></div></div>
+    <div class="intro"><div><h1>接龙变赛程</h1><p class="subline">粘贴名单，轮换搭档，直接开打。</p></div></div>
     <div id="notice" class="notice" role="status" aria-live="polite" hidden><span id="notice-text"></span><button id="notice-dismiss" class="notice-dismiss" type="button" aria-label="关闭提示">×</button></div>
     <nav class="view-tabs" aria-label="工作区"><button id="tab-setup" aria-pressed="true">01 名单与设置</button><button id="tab-results" aria-pressed="false">02 赛程与复制</button></nav>
     <div class="workspace" data-view="setup">
@@ -22,22 +22,20 @@
         <label for="raw" class="sr-only">微信接龙原文</label><textarea id="raw" rows="8" placeholder="#接龙&#10;周二晚 7-9&#10;&#10;1. panda&#10;2. 茶米&#10;3. Knox&#10;4. Syllabear" spellcheck="false"></textarea>
         <div class="row space relay-actions"><span class="hint">识别后，请核对参赛名单。</span><button id="parse" class="secondary">识别名单</button></div>
         <details id="source-details" hidden><summary>查看识别说明</summary><p id="parse-details" class="hint"></p></details>
-        <div id="roster-section" hidden><div class="row space roster-heading"><h3>参赛者 <span id="people-count" class="count">0</span></h3><button id="add" class="text-button">＋ 添加</button></div><p class="hint">取消「参与」可移出后续比赛；同名者请修改显示名。已有完成轮次时，请在此增删名单，接龙原文将锁定。</p><div id="roster"></div></div>
+        <div id="roster-section" hidden><div class="row space roster-heading"><h3>参赛者 <span id="people-count" class="count">0</span></h3><button id="add" class="text-button">＋ 添加</button></div><p class="hint">取消「参与」可移出后续比赛；同名者请修改显示名。已有完成轮次时，请在此增删名单，接龙原文将锁定。</p><label class="sr-only" for="player-search">查找参赛者</label><input id="player-search" type="search" placeholder="查找参赛者" autocomplete="off"><div id="roster"></div><p id="roster-empty" class="hint" hidden>没有匹配的参赛者，请清空搜索后查看全部名单。</p></div>
         <div class="section-title settings-title"><span class="step">02</span><h2>安排这次活动</h2></div>
-        <div class="fields">
-          <label class="wide">活动名称<input id="title" maxlength="80" value="羽毛球双打"></label>
-          <label>日期（选填）<input id="date" type="date"></label>
-          <label class="mobile-wide">活动时间范围（选填）<input id="time" maxlength="60" placeholder="周二 19:00–21:00" aria-describedby="time-status"></label>
-          <p id="time-status" class="wide hint" role="status"></p>
-          <label class="wide">地点（选填）<input id="location" maxlength="100" placeholder="球馆名称"></label>
-          <label>可用场地数<input id="courts" type="number" min="1" max="16" value="2"></label>
-          <label class="mobile-wide">排轮方式<select id="roundMode"><option value="auto">按时间预排</option><option value="manual">手动设置轮数</option></select></label>
-          <label>可打球时长（分钟）<input id="durationMinutes" type="number" min="5" max="720" value="120"></label>
-          <label>平均每场（分钟）<input id="matchMinutes" type="number" min="3" max="120" value="15"></label>
-          <label>预排总轮数<input id="rounds" type="number" min="1" max="500" value="12"></label>
-          <p id="round-estimate" class="wide estimate-note" aria-live="polite"></p>
-          <label class="wide">群通知备注（选填）<input id="notes" maxlength="200" placeholder="请按轮次上场，以现场通知为准。"></label>
-        </div>
+        <div class="fields basic-fields"><label>可用场地数<input id="courts" type="number" min="1" max="16" value="2"></label>
+<label>可打球时长（分钟）<input id="durationMinutes" type="number" min="5" max="720" value="120"></label></div>
+        <p id="time-status" class="hint" role="status"></p>
+        <details class="plan-details"><summary id="plan-summary">查看排轮说明</summary><p id="round-estimate" class="estimate-note" aria-live="polite"></p></details>
+        <details id="advanced-settings"><summary>更多设置：时间、每场用时与轮数</summary><div class="fields"><label class="wide">活动名称<input id="title" maxlength="80" value="羽毛球双打"></label>
+<label>日期（选填）<input id="date" type="date"></label>
+<label class="wide">活动时间范围（选填）<input id="time" maxlength="60" placeholder="周二 19:00–21:00" aria-describedby="time-status"></label>
+<label class="wide">地点（选填）<input id="location" maxlength="100" placeholder="球馆名称"></label>
+<label class="wide">排轮方式<select id="roundMode"><option value="auto">按时间预排</option><option value="manual">手动设置轮数</option></select></label>
+<label>平均每场（分钟）<input id="matchMinutes" type="number" min="3" max="120" value="15"></label>
+<label>预排总轮数<input id="rounds" type="number" min="1" max="500" value="12"></label>
+<label class="wide">群通知备注（选填）<input id="notes" maxlength="200" placeholder="请按轮次上场，以现场通知为准。"></label></div></details>
         <p class="mode-note">自由双打轮转 · 一次生成多轮<br>逐一轮换搭档，兼顾上场次数均衡。新赛程八人两块场地，七轮搭遍其他人。</p>
         <button id="generate" class="primary full">生成多轮赛程 <span aria-hidden="true">↗</span></button>
       </section>
@@ -47,14 +45,14 @@
         <div id="schedule-section" hidden>
           <div id="stale" class="warning" hidden>名单、设置或轮转规则已变更。请重新生成后，再复制群通知。</div>
           <div class="summary-strip"><span><strong id="stat-people">0</strong> 人参与</span><span><strong id="stat-rounds">0</strong> 轮比赛</span><span><strong id="stat-matches">0</strong> 场对阵</span></div>
-          <label class="round-filter">查看轮次<select id="view-round"><option value="all">全部轮次</option></select></label><div id="schedule"></div><button id="append-rounds" class="secondary full">再补 4 轮 · 保留现有对阵</button>
+          <label class="round-filter">查看轮次<select id="view-round"><option value="all">全部轮次</option></select></label><div class="round-navigation" aria-label="轮次导航"><button id="round-prev" class="secondary">上一轮</button><button id="round-current" class="secondary">进行中</button><button id="round-next" class="secondary">下一轮</button></div><p id="round-position" class="hint" role="status"></p><div id="schedule"></div><button id="append-rounds" class="secondary full">再补 4 轮 · 保留现有对阵</button>
           <details class="stats"><summary>查看上场次数与搭档覆盖进度</summary><p id="quality" class="hint"></p><div id="stats-list"></div></details>
-          <div class="share"><div class="row space"><h3>带到微信群</h3><label class="scope-label">复制范围<select id="scope"><option value="all">完整赛程</option></select></label></div><label for="output" class="sr-only">微信群通知文本</label><textarea id="output" readonly rows="10" spellcheck="false"></textarea><button id="copy" class="primary full">复制群通知</button><p class="hint">复制后粘贴到微信群发送。</p></div>
+          <div class="share"><details id="share-preview"><summary>群通知 · 选择范围与预览</summary><div class="row space"><h3>带到微信群</h3><label class="scope-label">复制范围<select id="scope"><option value="all">完整赛程</option></select></label></div><label for="output" class="sr-only">微信群通知文本</label><textarea id="output" readonly rows="10" spellcheck="false"></textarea></details><button id="copy" class="primary full">复制群通知</button><p class="hint">复制后粘贴到微信群发送。</p></div>
         </div>
       </section>
     </div>
     <footer><span id="save-status">草稿仅保存在当前浏览器</span><div class="row"><button id="undo" class="text-button" disabled>撤销</button><button id="export" class="text-button">导出备份</button><button id="import" class="text-button">导入备份</button><button id="clear" class="text-button danger">清空</button><input id="file" type="file" accept="application/json,.json" hidden></div></footer>
   </main>
-  <div class="mobile-action"><button id="mobile-primary" class="primary full">识别接龙名单</button></div>
+  <div class="mobile-action"><button id="mobile-complete" class="secondary" hidden>本轮完成</button><button id="mobile-primary" class="primary full">识别接龙名单</button></div>
 </body>
 </html>

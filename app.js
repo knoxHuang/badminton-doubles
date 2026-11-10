@@ -5,6 +5,7 @@
   const clone = value => JSON.parse(JSON.stringify(value));
   let manualRounds = null;
   let currentView = 'setup';
+  let scheduleViewInitialized = false;
   const scrollPositions = { setup: null, results: null };
   const pendingRelay = () => !state.completed && state.raw !== state.parsedRaw;
   const timeProblem = () => E.timeProblem(state.settings);
@@ -22,10 +23,14 @@
   function updateMobileAction() {
     const b = $('mobile-primary'), problem = timeProblem();
     b.disabled = false;
-    if (pendingRelay()) b.textContent = '接龙已修改 · 重新识别名单';
+    const selected = $('view-round').value;
+    $('mobile-complete').hidden = !(currentView === 'results' && state.schedule.length && selected !== 'all' && Number(selected) === state.completed && !state.stale && !pendingRelay());
+    $('mobile-complete').disabled = Boolean(problem);
+    if (pendingRelay()) b.textContent = state.people.length ? '重新识别名单' : '识别接龙名单';
     else if (currentView === 'results' && state.schedule.length) b.textContent = problem ? '返回设置核对活动时间' : state.stale ? '赛程待更新 · 返回设置' : $('scope').value === 'all' ? '复制完整赛程群通知' : `复制第 ${Number($('scope').value) + 1} 轮群通知`;
+    else if (currentView === 'results') b.textContent = '返回填写名单';
     else if (problem) { b.textContent = '请先核对活动时间'; b.disabled = true; }
-    else b.textContent = state.people.length ? $('generate').textContent : '识别接龙名单';
+    else b.textContent = state.people.length ? `生成赛程 · ${state.people.filter(p => p.active).length} 人` : '识别接龙名单';
   }
   function notify(message, error = false) { $('notice-text').textContent = message; $('notice').className = `notice${error ? ' error' : ''}`; $('notice').hidden = !message; clearTimeout(notify.timer); if (message && !error) notify.timer = setTimeout(() => { $('notice').hidden = true; }, 5500); }
   function remember() { history.push(clone(state)); if (history.length > 20) history.shift(); }
@@ -69,7 +74,7 @@
     $('empty').hidden = exists; $('schedule-section').hidden = !exists; $('stale').hidden = !state.stale;
     $('schedule-meta').textContent = exists ? `已完成 ${state.completed} / ${state.schedule.length} 轮` : '';
     const container = $('schedule'); container.replaceChildren();
-    if (!exists) return;
+    if (!exists) { scheduleViewInitialized = false; return; }
     const names = Object.fromEntries(state.people.map(p => [p.id, p.name]));
     const used = new Set(state.schedule.flatMap(r => r.matches.flatMap(m => m.teams.flat())));
     $('stat-people').textContent = used.size;
@@ -84,7 +89,12 @@
       const list = node('div');
       round.matches.forEach(match => {
         const card = node('div', 'match');
-        card.append(node('span', 'court', `${String(match.court).padStart(2, '0')} 号场`), node('span', 'team', match.teams[0].map(id => names[id] || '已移除').join(' / ')), node('span', 'vs', 'VS'), node('span', 'team', match.teams[1].map(id => names[id] || '已移除').join(' / ')));
+        const status = index < state.completed ? '已完成' : index === state.completed ? '进行中' : '待开始';
+        const heading = node('div', 'match-heading');
+        heading.append(node('span', 'court', `场地 ${String(match.court).padStart(2, '0')}`), node('span', 'match-state', status));
+        const teams = node('div', 'match-teams');
+        teams.append(node('span', 'team team-a', match.teams[0].map(id => names[id] || '已移除').join(' / ')), node('span', 'vs', 'VS'), node('span', 'team team-b', match.teams[1].map(id => names[id] || '已移除').join(' / ')));
+        card.append(heading, teams);
         list.append(card);
       });
       section.dataset.round = String(index); section.append(head, list); container.append(section);
@@ -105,11 +115,28 @@
     });
     const scope = $('scope'), oldScope = scope.value; scope.replaceChildren(new Option('完整赛程', 'all'));
     state.schedule.forEach((_, i) => scope.add(new Option(`第 ${i + 1} 轮`, String(i))));
-    scope.value = [...scope.options].some(o => o.value === oldScope) ? oldScope : 'all';
-    const filter = $('view-round'), previous = filter.value; filter.replaceChildren(new Option('全部轮次', 'all')); state.schedule.forEach((_, i) => filter.add(new Option(`第 ${i + 1} 轮`, String(i)))); filter.value = [...filter.options].some(o => o.value === previous) ? previous : 'all'; filterRounds();
+    scope.value = scheduleViewInitialized && [...scope.options].some(o => o.value === oldScope) ? oldScope : String(Math.min(state.completed, state.schedule.length - 1));
+    const filter = $('view-round'), previous = filter.value; filter.replaceChildren(new Option('全部轮次', 'all')); state.schedule.forEach((_, i) => filter.add(new Option(`第 ${i + 1} 轮`, String(i)))); filter.value = scheduleViewInitialized && [...filter.options].some(o => o.value === previous) ? previous : String(Math.min(state.completed, state.schedule.length - 1)); scheduleViewInitialized = true; filterRounds();
     updateOutput();
   }
-  function filterRounds() { document.querySelectorAll('#schedule .round').forEach(r => { r.hidden = $('view-round').value !== 'all' && r.dataset.round !== $('view-round').value; }); }
+  function filterRounds() {
+    const value = $('view-round').value, index = value === 'all' ? Math.min(state.completed, state.schedule.length - 1) : Number(value);
+    document.querySelectorAll('#schedule .round').forEach(r => { r.hidden = value !== 'all' && r.dataset.round !== value; });
+    $('round-prev').disabled = index <= 0;
+    $('round-next').disabled = index >= state.schedule.length - 1;
+    $('round-current').disabled = value !== 'all' && index === Math.min(state.completed, state.schedule.length - 1);
+    const status = state.completed === state.schedule.length ? '全部已完成' : index < state.completed ? '已完成' : index === state.completed ? '进行中' : '待开始';
+    $('round-position').textContent = value === 'all' ? `共 ${state.schedule.length} 轮，已完成 ${state.completed} 轮` : `第 ${index + 1} / ${state.schedule.length} 轮 · ${status}`;
+  }
+  function filterRoster() {
+    const query = $('player-search').value.trim().toLocaleLowerCase();
+    let visible = 0;
+    document.querySelectorAll('#roster .person').forEach(row => {
+      row.hidden = !row.querySelector('input[type=text]').value.toLocaleLowerCase().includes(query);
+      if (!row.hidden) visible++;
+    });
+    $('roster-empty').hidden = !state.people.length || visible > 0;
+  }
   function updateOutput() {
     const problem = timeProblem();
     $('generate').disabled = Boolean(problem);
@@ -135,14 +162,15 @@
     $('durationMinutes').setAttribute('aria-invalid', String(Boolean(problem)));
     $('time-status').textContent = problem || (state.timeSource === 'retained'
       ? '本次未识别到时间，正在沿用已有设置，请核对活动时间和可打球时长。'
-      : range ? `活动时段共 ${range.durationMinutes} 分钟；可打球时长用于排轮，可扣除热身和休息。`
+      : range ? `${state.settings.time}，共 ${range.durationMinutes} 分钟。可打球时长可扣除热身和休息。`
         : '未识别到有效时间范围，请手动核对可打球时长。');
     $('time-status').classList.toggle('time-warning', Boolean(problem) || state.timeSource === 'retained');
     $('generate').disabled = Boolean(problem);
     $('append-rounds').disabled = state.stale || pendingRelay() || Boolean(problem) || state.schedule.length >= E.MAX_ROUNDS;
-    if (!auto) { $('round-estimate').textContent = '手动设置轮数。活动结束时可随时停止，也可继续补轮。'; return; }
+    if (!auto) { $('plan-summary').textContent = `手动预排 ${state.settings.rounds} 轮 · 查看说明`; $('round-estimate').textContent = '手动设置轮数。活动结束时可随时停止，也可继续补轮。'; return; }
     try {
       const e = E.estimateRounds(state.settings.durationMinutes, state.settings.matchMinutes), people = state.people.filter(p => p.active).length;
+      $('plan-summary').textContent = `预计打 ${e.estimatedRounds} 轮 · 至少预排 ${state.settings.rounds} 轮`;
       const matches = Math.min(Number(state.settings.courts), Math.floor(people / 4));
       const perPerson = people >= 4 ? `每人预计约 ${(e.estimatedRounds * matches * 4 / people).toFixed(1)} 场。` : '识别名单后显示每人预计场次。';
       const coverageHint = matches ? `搭遍其他人至少需 ${Math.ceil(people * (people - 1) / 2 / (matches * 2))} 轮，特殊人数可能需要更多轮次。` : '';
@@ -175,7 +203,7 @@
     $('generate').textContent = state.completed ? '保留已完成轮次，重排后续' : state.schedule.length ? '重新生成赛程 ↗' : '生成多轮赛程 ↗';
     $('roster-section').hidden = !state.people.length;
     $('people-count').textContent = state.people.filter(p => p.active).length;
-    if (!keepRoster) renderRoster();
+    if (!keepRoster) { renderRoster(); filterRoster(); }
     renderSchedule(); renderEstimate(); updateMobileAction();
   }
   $('raw').addEventListener('input', () => { state.raw = $('raw').value; save(); updateOutput(); });
@@ -185,6 +213,7 @@
     const parsed = E.parseRelay(state.raw);
     if (!parsed.people.length) { notify('未识别到参赛者。请使用「1. 姓名」格式。', true); return; }
     if (parsed.people.length > E.MAX_PEOPLE) { notify(`最多支持 ${E.MAX_PEOPLE} 位参赛者。`, true); return; }
+    $('player-search').value = '';
     mutate(() => { state.people = parsed.people; state.parsedRaw = state.raw; state.schedule = []; state.stale = false; state.timeSource = parsed.time ? 'relay' : 'retained'; if (parsed.time) state.settings.time = parsed.time; if (parsed.durationMinutes) state.settings.durationMinutes = parsed.durationMinutes; recalculateRounds(); });
     scrollPositions.results = null;
     $('source-details').hidden = false;
@@ -193,6 +222,7 @@
   });
   $('add').addEventListener('click', () => {
     if (state.people.length >= E.MAX_PEOPLE) { notify(`最多支持 ${E.MAX_PEOPLE} 位参赛者。`, true); return; }
+    $('player-search').value = '';
     mutate(() => { state.people.push({ id: E.id(), name: '', active: true, confirmed: true, note: '' }); recalculateRounds(); }, true);
     $('roster').lastElementChild.querySelector('input').focus();
   });
@@ -220,6 +250,7 @@
     if (state.raw !== state.parsedRaw && !state.completed) { notify('接龙原文已修改。请先重新识别并核对名单，再生成赛程。', true); return; }
     try {
       const schedule = E.generate(state.people, state.settings, state.schedule.slice(0, state.completed));
+      scheduleViewInitialized = false;
       mutate(() => { state.schedule = schedule; state.settings.rounds = schedule.length; state.stale = false; });
       notify(`已生成 ${schedule.length} 轮赛程${state.completed ? `，前 ${state.completed} 轮保持锁定` : ''}。可在下方复制群通知。`);
       setView('results', { reset: true });
@@ -227,9 +258,18 @@
   });
   $('tab-setup').addEventListener('click', () => setView('setup'));
   $('tab-results').addEventListener('click', () => setView('results'));
-  $('mobile-primary').addEventListener('click', () => { if (state.raw !== state.parsedRaw && !state.completed) { setView('setup'); $('parse').click(); return; } if (currentView === 'results' && state.schedule.length) { if (state.stale || timeProblem()) setView('setup'); else $('copy').click(); } else $(state.people.length ? 'generate' : 'parse').click(); });
+  $('mobile-primary').addEventListener('click', () => { if (state.raw !== state.parsedRaw && !state.completed) { setView('setup'); $('parse').click(); return; } if (currentView === 'results' && state.schedule.length) { if (state.stale || timeProblem()) setView('setup'); else $('copy').click(); } else if (currentView === 'results') { setView('setup'); $('raw').focus(); } else $(state.people.length ? 'generate' : 'parse').click(); });
   $('view-round').addEventListener('change', () => { filterRounds(); $('scope').value = $('view-round').value; updateOutput(); });
-  $('scope').addEventListener('change', updateOutput);
+  $('scope').addEventListener('change', () => { $('view-round').value = $('scope').value; filterRounds(); updateOutput(); });
+  $('player-search').addEventListener('input', filterRoster);
+  $('mobile-complete').addEventListener('click', completeRound);
+  function moveRound(delta) {
+    const current = $('view-round').value === 'all' ? Math.min(state.completed, state.schedule.length - 1) : Number($('view-round').value);
+    selectRound(Math.max(0, Math.min(state.schedule.length - 1, current + delta)));
+  }
+  $('round-prev').addEventListener('click', () => moveRound(-1));
+  $('round-next').addEventListener('click', () => moveRound(1));
+  $('round-current').addEventListener('click', () => selectRound(Math.min(state.completed, state.schedule.length - 1)));
   function updateKeyboardState() {
     const viewport = window.visualViewport, active = document.activeElement;
     const editable = active && (active.isContentEditable || active.matches('textarea:not([readonly]):not(:disabled), input:not([readonly]):not(:disabled):not([type=checkbox]):not([type=radio]):not([type=file]):not([type=button]):not([type=submit])'));
@@ -247,6 +287,7 @@
       await navigator.clipboard.writeText($('output').value);
       notify('群通知已复制。请粘贴到微信群发送。');
     } catch {
+      $('share-preview').open = true;
       $('output').focus(); $('output').select(); $('output').setSelectionRange(0, $('output').value.length);
       notify('自动复制不可用，已选中文本。请长按复制，或按 Ctrl/Cmd+C。');
     }
@@ -263,12 +304,14 @@
     try {
       if (file.size > 8000000) throw new Error('备份文件不能超过 8 MB。');
       const imported = E.readBackup(JSON.parse(await file.text()));
+      scheduleViewInitialized = false; $('player-search').value = '';
       mutate(() => { state = imported; }); $('source-details').hidden = true; notify('已导入活动备份。可撤销此次导入。');
     } catch (error) { notify(`导入失败：${error.message}`, true); }
     $('file').value = '';
   });
   $('clear').addEventListener('click', () => {
     if (!window.confirm('清空当前名单、设置和赛程？需要保留时，请先导出备份。')) return;
+    $('player-search').value = '';
     mutate(() => { state = E.emptyState(); }); $('source-details').hidden = true; notify('已清空，可点击「撤销」恢复。');
   });
   try {
@@ -281,4 +324,5 @@
   }
   catch { notify('本机草稿不可用或格式无效。可重新粘贴接龙，或导入备份。', true); }
   render();
+  if (state.schedule.length && !state.stale) setView('results', { reset: true });
 })();

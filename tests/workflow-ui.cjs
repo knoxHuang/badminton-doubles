@@ -22,7 +22,20 @@ async function sample(page) {
   await page.locator('#parse').click();
 }
 
+async function openDetails(page, selector) {
+  const details = page.locator(selector);
+  if (!await details.evaluate(el => el.open)) await details.locator('summary').first().click();
+}
+
+async function readScope(page) {
+  await openDetails(page, '#share-preview');
+  return page.locator('#scope').inputValue();
+}
+
 async function change(page, selector, value) {
+  if (['#title', '#date', '#time', '#location', '#matchMinutes', '#rounds', '#notes'].includes(selector)) {
+    await openDetails(page, '#advanced-settings');
+  }
   await page.locator(selector).fill(String(value));
   await page.locator(selector).blur();
 }
@@ -36,7 +49,7 @@ async function testConflict(page) {
     '180 minutes must not generate a schedule for the unchanged 19:00–21:00 range');
   assert.equal(await page.locator('#copy').isDisabled(), true, 'conflicting duration must block copying');
   assert.equal(await page.locator('#append-rounds').isDisabled(), true, 'conflicting duration must block appending');
-  assert.equal(await page.locator('.round-head button').isDisabled(), true, 'conflicting duration must block completion');
+  assert.equal(await page.locator('#mobile-complete').isDisabled(), true, 'conflicting duration must block completion');
   assert.match(await page.locator('#time-status').innerText(), /超过|冲突|大于|不一致/);
   assert.equal(await page.locator('#time-status').isVisible(), true);
 
@@ -50,6 +63,7 @@ async function testShorterPlayingTime(page) {
   await change(page, '#durationMinutes', 90);
   assert.equal(await page.locator('#generate').isDisabled(), false, 'a shorter playing duration is allowed');
   await page.locator('#mobile-primary').click();
+  await openDetails(page, '#share-preview');
   const text = await page.locator('#output').inputValue();
   assert.match(text, /19:00–21:00/, 'the activity window must stay visible');
   assert.match(text, /90\s*分钟/, 'the group notice must explicitly identify the shorter playing duration');
@@ -63,6 +77,7 @@ async function testMissingTimeSource(page) {
   assert.equal(await page.locator('#time').inputValue(), '周二 19:00–21:00');
   assert.match(await page.locator('#time-status').innerText(), /本次未识别到时间/);
   assert.match(await page.locator('#time-status').innerText(), /沿用/);
+  await openDetails(page, '#source-details');
   assert.doesNotMatch(await page.locator('#parse-details').innerText(), /识别出的时间/);
   const backup = await page.evaluate(() => localStorage.getItem('doubles-club-v1'));
 
@@ -80,16 +95,17 @@ async function testMissingTimeSource(page) {
 
 async function testSingleRoundProgress(page) {
   await sample(page);
+  await openDetails(page, '#advanced-settings');
   await page.locator('#roundMode').selectOption('manual');
   await change(page, '#rounds', 2);
   await page.locator('#mobile-primary').click();
   const original = (await readState(page)).schedule;
   await page.locator('#view-round').selectOption('0');
-  await page.locator('.round-head button').click();
+  await page.locator('#mobile-complete').click();
   assert.equal(await page.locator('#view-round').inputValue(), '1', 'completion must advance to the next single round');
-  assert.equal(await page.locator('#scope').inputValue(), '1', 'copy scope must advance with the visible round');
+  assert.equal(await readScope(page), '1', 'copy scope must advance with the visible round');
   assert.equal(await page.locator('#schedule .round:visible').getAttribute('data-round'), '1');
-  await page.locator('.round-head button').click();
+  await page.locator('#mobile-complete').click();
   const completedNotice = await page.locator('#notice').innerText();
   assert.match(completedNotice, /全部|所有/);
   assert.match(completedNotice, /完成/);
@@ -107,9 +123,9 @@ async function testSingleRoundAutoAppend(page) {
   const original = (await readState(page)).schedule;
   await page.locator('#view-round').selectOption('0');
   for (let completed = 1; completed <= 10; completed++) {
-    await page.locator('.round-head button').click();
+    await page.locator('#mobile-complete').click();
     assert.equal(await page.locator('#view-round').inputValue(), String(completed));
-    assert.equal(await page.locator('#scope').inputValue(), String(completed));
+    assert.equal(await readScope(page), String(completed));
   }
   const state = await readState(page);
   assert.equal(state.completed, 10);
@@ -127,7 +143,7 @@ async function testPartnerRotationAndUpgrade(page) {
   });
   assert.equal(firstCycle.completePlayers, 8);
   assert.ok(firstCycle.byPlayer.every(p => p.covered === 7));
-  for (let i = 0; i < 3; i++) await page.locator('.round-head button').click();
+  for (let i = 0; i < 3; i++) await page.locator('#mobile-complete').click();
   const locked = (await readState(page)).schedule.slice(0, 3);
   await page.evaluate(() => {
     const state = JSON.parse(localStorage.getItem('doubles-club-v1'));
@@ -137,13 +153,30 @@ async function testPartnerRotationAndUpgrade(page) {
   await page.reload();
   assert.equal(await page.locator('#copy').isDisabled(), true);
   assert.match(await page.locator('#notice-text').innerText(), /轮转规则已更新/);
+  await page.locator('#tab-setup').click();
   await page.locator('#mobile-primary').click();
   assert.deepEqual((await readState(page)).schedule.slice(0, 3), locked);
   assert.equal((await readState(page)).stale, false);
 }
+async function testCollapsedPreviewCopyFallback(page) {
+  await sample(page);
+  await page.locator('#mobile-primary').click();
+  assert.equal(await page.locator('#share-preview').evaluate(el => el.open), false);
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied'); } } }));
+  await page.locator('#mobile-primary').click();
+  await page.waitForFunction(() => document.getElementById('share-preview').open);
+  assert.equal(await page.locator('#output').evaluate(el => el.selectionEnd - el.selectionStart), (await page.locator('#output').inputValue()).length);
+  assert.match(await page.locator('#notice-text').innerText(), /自动复制不可用/);
+  await page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async text => { window.testCopiedText = text; } } }));
+  await page.locator('#mobile-primary').click();
+  await page.waitForFunction(() => typeof window.testCopiedText === 'string');
+  assert.equal(await page.evaluate(() => window.testCopiedText), await page.locator('#output').inputValue());
+}
+
 async function testSingleCourtFullCoverage(page) {
   await sample(page);
   await change(page, '#courts', 1);
+  await openDetails(page, '#advanced-settings');
   assert.equal(await page.locator('#rounds').inputValue(), '14');
   await page.locator('#mobile-primary').click();
   assert.equal((await readState(page)).schedule.length, 14);
@@ -155,7 +188,7 @@ async function testSingleCourtFullCoverage(page) {
   const { chromium } = loadPlaywright();
   const browser = await chromium.launch({ executablePath, headless: true });
   try {
-    const cases = [testConflict, testShorterPlayingTime, testMissingTimeSource, testSingleRoundProgress, testSingleRoundAutoAppend, testPartnerRotationAndUpgrade, testSingleCourtFullCoverage];
+    const cases = [testConflict, testShorterPlayingTime, testMissingTimeSource, testSingleRoundProgress, testSingleRoundAutoAppend, testPartnerRotationAndUpgrade, testSingleCourtFullCoverage, testCollapsedPreviewCopyFallback];
     for (const run of cases) {
       // Each case owns a new nonpersistent context; user browser data is never accessed.
       const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });

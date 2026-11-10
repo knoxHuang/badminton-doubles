@@ -52,6 +52,10 @@ async function main() {
       localStorage.setItem('doubles-club-v1', JSON.stringify(state));
     });
     await page.reload();
+    await page.waitForFunction(() => document.getElementById('tab-results').getAttribute('aria-pressed') === 'true');
+    assert.equal(await page.locator('#view-round').inputValue(), '0', 'Restored schedule must start on the current unfinished round');
+    assert.equal(await page.locator('#schedule .round:visible').count(), 1);
+    await tapOnce(page, '#tab-setup');
     return { context, page };
   }
   async function check(width, name, run) {
@@ -65,6 +69,14 @@ async function main() {
       results.push({ width, name, passed: false, message: error.message });
       console.error(`FAIL ${width}px ${name}: ${error.message}`);
     } finally { if (context) await context.close(); }
+  }
+  async function openDetails(page, selector) {
+    const details = page.locator(selector);
+    if (!await details.evaluate(el => el.open)) await details.locator('summary').first().click();
+  }
+  async function assertScope(page, expected) {
+    await openDetails(page, '#share-preview');
+    assert.equal(await page.locator('#scope').inputValue(), expected);
   }
   async function triggerError(page) {
     await page.locator('#courts').evaluate(el => el.scrollIntoView({ block: 'center' }));
@@ -128,7 +140,9 @@ async function main() {
         const setupY = await page.evaluate(() => scrollY);
         await tapOnce(page, '#tab-results');
         const firstTop = await page.locator('.results').evaluate(el => el.getBoundingClientRect().top);
-        assert.ok(firstTop >= 0 && firstTop < 160, `First results view starts at y=${firstTop}`);
+        assert.ok(firstTop >= 0 && firstTop < page.viewportSize().height / 2,
+          `Results heading must remain visible near the top: y=${firstTop}`);
+        await page.locator('#view-round').selectOption('all');
         await page.evaluate(() => scrollTo(0, 1000)); await settle(page);
         const resultsY = await page.evaluate(() => scrollY);
         await tapOnce(page, '#tab-setup');
@@ -158,11 +172,11 @@ async function main() {
         assert.ok(gap >= 11.9, `Relay action gap is only ${gap}px`);
       });
       await check(width, 'time and round mode occupy a readable full row', async page => {
+        await openDetails(page, '#advanced-settings');
         await page.locator('#time').fill('周二 19:00–21:00');
         await page.locator('#time').blur();
         const sizing = await page.evaluate(() => {
-          const grid = document.querySelector('.fields').getBoundingClientRect().width;
-          return ['time', 'roundMode'].map(id => ({ id, width: document.getElementById(id).getBoundingClientRect().width, grid }));
+          return ['time', 'roundMode'].map(id => { const el = document.getElementById(id); return { id, width: el.getBoundingClientRect().width, grid: el.closest('.fields').getBoundingClientRect().width }; });
         });
         assert.ok(sizing.every(s => Math.abs(s.width - s.grid) < 2), JSON.stringify(sizing));
         assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
@@ -174,6 +188,77 @@ async function main() {
           const s = getComputedStyle(el); return [s.borderTopLeftRadius, s.borderTopRightRadius, s.borderBottomLeftRadius, s.borderBottomRightRadius];
         });
         assert.deepEqual(corners, ['8px', '8px', '8px', '8px']);
+      });
+      await check(width, 'advanced settings are collapsed but every field remains usable', async page => {
+        assert.equal(await page.locator('#advanced-settings').evaluate(el => el.open), false);
+        assert.equal(await page.locator('#time').isVisible(), false);
+        assert.equal(await page.locator('#courts').isVisible(), true);
+        assert.equal(await page.locator('#durationMinutes').isVisible(), true);
+        await openDetails(page, '#advanced-settings');
+        for (const id of ['title', 'date', 'time', 'location', 'roundMode', 'matchMinutes', 'rounds', 'notes']) {
+          assert.equal(await page.locator(`#${id}`).isVisible(), true, `${id} must be available after expanding`);
+        }
+        await page.locator('#title').fill('手机测试活动'); await page.locator('#title').blur();
+        await page.locator('#date').fill('2026-11-10'); await page.locator('#date').blur();
+        await page.locator('#location').fill('测试球馆'); await page.locator('#location').blur();
+        await page.locator('#notes').fill('到时间停止'); await page.locator('#notes').blur();
+        await tapOnce(page, '#tab-results');
+        assert.equal(await page.locator('#share-preview').evaluate(el => el.open), false);
+        assert.equal(await page.locator('#output').isVisible(), false);
+        await openDetails(page, '#share-preview');
+        const text = await page.locator('#output').inputValue();
+        for (const value of ['手机测试活动', '2026-11-10', '测试球馆', '到时间停止']) assert.ok(text.includes(value), value);
+      });
+      await check(width, 'round navigation changes the visible and copied round together', async page => {
+        await tapOnce(page, '#tab-results');
+        assert.equal(await page.locator('#view-round').inputValue(), '0');
+        await tapOnce(page, '#round-next');
+        assert.equal(await page.locator('#view-round').inputValue(), '1'); await assertScope(page, '1');
+        assert.match(await page.locator('#round-position').innerText(), /2/);
+        await tapOnce(page, '#round-prev');
+        assert.equal(await page.locator('#view-round').inputValue(), '0'); await assertScope(page, '0');
+        await tapOnce(page, '#round-next'); await tapOnce(page, '#round-next');
+        await tapOnce(page, '#round-current');
+        assert.equal(await page.locator('#view-round').inputValue(), '0'); await assertScope(page, '0');
+        await page.locator('#view-round').selectOption('all');
+        assert.equal(await page.locator('#schedule .round:visible').count(), 12); await assertScope(page, 'all');
+      });
+      await check(width, 'match cards expose a heading and two distinct teams', async page => {
+        await tapOnce(page, '#tab-results');
+        const cards = page.locator('#schedule .round:visible .match');
+        assert.equal(await cards.count(), 2);
+        for (const card of await cards.all()) {
+          assert.equal(await card.locator('.match-heading').count(), 1);
+          assert.equal(await card.locator('.match-teams').count(), 1);
+          assert.equal(await card.locator('.team-a').count(), 1);
+          assert.equal(await card.locator('.team-b').count(), 1);
+          assert.ok((await card.locator('.team-a').innerText()).trim());
+          assert.ok((await card.locator('.team-b').innerText()).trim());
+        }
+      });
+      await check(width, 'player search filters presentation without changing participation or matches', async page => {
+        const before = await page.evaluate(() => JSON.parse(localStorage.getItem('doubles-club-v1')));
+        await page.locator('#player-search').fill('Knox');
+        assert.equal(await page.locator('#roster .person:visible').count(), 1);
+        assert.equal(await page.locator('#people-count').innerText(), '8');
+        await page.locator('#player-search').fill('no-matching-player');
+        assert.equal(await page.locator('#roster .person:visible').count(), 0);
+        await page.locator('#player-search').fill('');
+        assert.equal(await page.locator('#roster .person:visible').count(), 8);
+        const after = await page.evaluate(() => JSON.parse(localStorage.getItem('doubles-club-v1')));
+        assert.deepEqual(after.people, before.people); assert.deepEqual(after.schedule, before.schedule);
+      });
+      await check(width, 'fixed completion advances the current round and is hidden for future rounds', async page => {
+        await tapOnce(page, '#tab-results');
+        assert.equal(await page.locator('#mobile-complete').isVisible(), true);
+        await tapOnce(page, '#round-next');
+        assert.equal(await page.locator('#mobile-complete').isVisible(), false);
+        await tapOnce(page, '#round-current');
+        await tapOnce(page, '#mobile-complete');
+        assert.equal(await page.locator('#view-round').inputValue(), '1'); await assertScope(page, '1');
+        assert.equal(await page.locator('#mobile-complete').isVisible(), true);
+        const state = await page.evaluate(() => JSON.parse(localStorage.getItem('doubles-club-v1')));
+        assert.equal(state.completed, 1);
       });
       await check(width, 'partner coverage is complete and readable', async page => {
         await tapOnce(page, '#tab-results');
