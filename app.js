@@ -173,6 +173,7 @@
       : range ? `${state.settings.time}，共 ${range.durationMinutes} 分钟。可打球时长可扣除热身和休息。`
         : '未识别到有效时间范围，请手动核对可打球时长。');
     $('time-status').classList.toggle('time-warning', Boolean(problem) || state.timeSource === 'retained');
+    if (!state.people.length && !state.raw.trim() && !problem) $('time-status').textContent = '';
     $('generate').disabled = Boolean(problem);
     $('append-rounds').disabled = state.stale || pendingRelay() || Boolean(problem) || state.schedule.length >= E.MAX_ROUNDS;
     if (!auto) { $('plan-summary').textContent = `手动预排 ${state.settings.rounds} 轮 · 查看说明`; $('round-estimate').textContent = '手动设置轮数。活动结束时可随时停止，也可继续补轮。'; return; }
@@ -221,26 +222,44 @@
   }
   function selectRound(index) { $('view-round').value = 'all'; focusRound(index); updateOutput(); }
   function render({ keepRoster = false } = {}) {
+    $('setup-title').textContent = state.people.length ? '核对参赛名单' : '粘贴微信接龙';
+    $('relay-source').classList.toggle('parsed', Boolean(state.people.length));
     $('raw').value = state.raw; $('raw').disabled = state.completed > 0; $('sample').disabled = state.completed > 0; $('parse').disabled = state.completed > 0; $('raw').title = state.completed ? '已有完成轮次，请通过名单添加、编辑或取消参与。' : ''; 
     for (const [field, value] of Object.entries(state.settings)) $(field).value = value;
     $('undo').disabled = !history.length;
-    $('parse').textContent = state.completed ? '历史已锁定' : '识别名单';
+    $('parse').textContent = state.completed ? '历史已锁定' : '重新识别';
+    $('parse').hidden = !state.people.length;
     $('generate').textContent = state.completed ? '保留已完成轮次，重排后续' : state.schedule.length ? '重新生成赛程 ↗' : '生成多轮赛程 ↗';
     $('roster-section').hidden = !state.people.length;
     $('people-count').textContent = state.people.filter(p => p.active).length;
+    const summary = $('roster-summary'); summary.replaceChildren();
+    state.people.forEach(p => summary.append(node('span', `name-chip${p.active ? '' : ' inactive'}${p.active && !p.confirmed ? ' unconfirmed' : ''}`, p.name || '待填写姓名')));
     if (!keepRoster) { renderRoster(); filterRoster(); }
     renderSchedule(); renderEstimate(); updateMobileAction();
   }
   $('raw').addEventListener('input', () => { state.raw = $('raw').value; save(); updateOutput(); });
-  $('sample').addEventListener('click', () => { mutate(() => { state.raw = E.SAMPLE; }); notify('已填入你的接龙示例，点击「识别名单」继续。'); });
+  $('sample').addEventListener('click', () => { mutate(() => { state.raw = E.SAMPLE; }); $('parse').click(); });
+  $('raw').addEventListener('paste', event => {
+    if (sharedView || state.completed) return;
+    const text = event.clipboardData?.getData('text/plain');
+    if (text) {
+      event.preventDefault();
+      $('raw').setRangeText(text, $('raw').selectionStart, $('raw').selectionEnd, 'end');
+      $('raw').dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    setTimeout(() => { state.raw = $('raw').value; if (state.raw.trim() && state.raw !== state.parsedRaw) $('parse').click(); }, 0);
+  });
   $('parse').addEventListener('click', () => {
     if (state.completed) { notify('已完成轮次已锁定。请直接添加、编辑或取消参与，保留历史记录。', true); return; }
     const parsed = E.parseRelay(state.raw);
     if (!parsed.people.length) { notify('未识别到参赛者。请使用「1. 姓名」格式。', true); return; }
     if (parsed.people.length > E.MAX_PEOPLE) { notify(`最多支持 ${E.MAX_PEOPLE} 位参赛者。`, true); return; }
+    $('raw').blur();
     $('player-search').value = '';
     mutate(() => { state.people = parsed.people; state.parsedRaw = state.raw; state.schedule = []; state.stale = false; state.timeSource = parsed.time ? 'relay' : 'retained'; if (parsed.time) state.settings.time = parsed.time; if (parsed.durationMinutes) state.settings.durationMinutes = parsed.durationMinutes; recalculateRounds(); });
     scrollPositions.results = null;
+    $('relay-source').open = false;
+    $('roster-editor').open = parsed.people.some(p => p.active && !p.confirmed);
     $('source-details').hidden = false;
     $('parse-details').textContent = `${parsed.ignored.length ? `未作为名单导入：${parsed.ignored.join('；')}。` : ''}${parsed.time ? '已识别时间，请核对；日期和地点请手动填写。' : '本次未识别到时间，沿用已有设置，请核对活动时间和可打球时长。'}`;
     notify(`已识别 ${parsed.people.length} 人${parsed.people.some(p => !p.confirmed) ? '，有待核对项' : ''}。${parsed.time ? '请核对名单后生成赛程。' : '本次未识别到时间，请核对沿用的设置。'}`);
@@ -249,6 +268,7 @@
     if (state.people.length >= E.MAX_PEOPLE) { notify(`最多支持 ${E.MAX_PEOPLE} 位参赛者。`, true); return; }
     $('player-search').value = '';
     mutate(() => { state.people.push({ id: E.id(), name: '', active: true, confirmed: true, note: '' }); recalculateRounds(); }, true);
+    $('roster-editor').open = true;
     $('roster').lastElementChild.querySelector('input').focus();
   });
   for (const field of Object.keys(state.settings)) $(field).addEventListener('change', () => {
@@ -415,6 +435,11 @@
   }
   catch { notify('本机草稿不可用或格式无效。可重新粘贴接龙，或导入备份。', true); }
   render();
+  if (state.people.length) { $('relay-source').open = false; $('roster-editor').open = state.people.some(p => p.active && !p.confirmed); }
+  if (location.protocol === 'file:' || ['localhost', '127.0.0.1'].includes(location.hostname)) {
+    document.querySelector('.local-label').textContent = '本地预览';
+    document.title = '本地预览 · 换个搭档';
+  }
   if (sharedView || (state.schedule.length && !state.stale)) setView('results', { reset: true });
   if (/^https?:$/.test(location.protocol)) checkForUpdate();
 })();

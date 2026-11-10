@@ -19,14 +19,19 @@ const readState = page => page.evaluate(() => JSON.parse(localStorage.getItem('d
 
 async function sample(page) {
   await page.locator('#sample').click();
-  await page.locator('#parse').click();
+  await page.waitForFunction(() => document.getElementById('people-count').textContent.trim() === '8');
   await page.locator('#courts').fill('2');
   await page.locator('#courts').blur();
 }
 
 async function openDetails(page, selector) {
   const details = page.locator(selector);
-  if (!await details.evaluate(el => el.open)) await details.locator('summary').first().click();
+  const parents = await details.evaluate(el => { const ids = []; for (let p = el.parentElement; p; p = p.parentElement) if (p.tagName === 'DETAILS' && p.id) ids.unshift(p.id); return ids; });
+  for (const id of parents) {
+    const parent = page.locator(`#${id}`);
+    if (!await parent.evaluate(el => el.open)) await parent.locator(':scope > summary').click();
+  }
+  if (!await details.evaluate(el => el.open)) await details.locator(':scope > summary').click();
 }
 
 async function readScope(page) {
@@ -74,6 +79,7 @@ async function testShorterPlayingTime(page) {
 
 async function testMissingTimeSource(page) {
   await sample(page);
+  await openDetails(page, '#relay-source');
   await page.locator('#raw').fill('#接龙\n1. A\n2. B\n3. C\n4. D');
   await page.locator('#parse').click();
   assert.equal(await page.locator('#time').inputValue(), '周二 19:00–21:00');
@@ -194,11 +200,61 @@ async function testSingleCourtFullCoverage(page) {
   assert.match(await page.locator('#quality').innerText(), /28\/28/);
 }
 
+async function pasteRelay(page, text) {
+  await openDetails(page, '#relay-source');
+  await page.locator('#raw').focus();
+  await page.locator('#raw').evaluate((el, value) => {
+    const data = new DataTransfer();
+    data.setData('text/plain', value);
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: data, bubbles: true, cancelable: true }));
+  }, text);
+}
+
+async function testPasteRecognizesWithoutManualParse(page) {
+  await openDetails(page, '#relay-source');
+  assert.equal(await page.locator('#parse').isVisible(), false, 'Fresh activity should only need the bottom identification action');
+  const text = await page.evaluate(() => Doubles.SAMPLE);
+  await pasteRelay(page, text);
+  await page.waitForFunction(() => document.getElementById('people-count').textContent.trim() === '8');
+  assert.equal(await page.locator('#relay-source').evaluate(el => el.open), false);
+  assert.equal(await page.locator('#roster-editor').evaluate(el => el.open), false);
+  const names = await page.locator('#roster-summary').innerText();
+  for (const name of ['panda', '茶米', 'Knox', 'Syllabear', 'Reus', '长华', '云朵', '歪西']) assert.ok(names.includes(name), name);
+  assert.equal(await page.locator('#roster-summary .name-chip').count(), 8);
+  assert.equal((await readState(page)).people.length, 8);
+  assert.equal((await readState(page)).raw, text);
+}
+
+async function testSampleRecognizesAndKeepsEditorOptional(page) {
+  await sample(page);
+  assert.equal(await page.locator('#relay-source').evaluate(el => el.open), false);
+  assert.equal(await page.locator('#roster-editor').evaluate(el => el.open), false);
+  assert.equal(await page.locator('#roster').isVisible(), false);
+  await openDetails(page, '#roster-editor');
+  await page.locator('#roster input[type=text]').first().fill('panda renamed');
+  const target = page.locator('#roster input[type=checkbox]').first();
+  await target.evaluate(el => el.scrollIntoView({ block: 'center' }));
+  const box = await target.boundingBox();
+  await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2);
+  assert.equal(await target.isChecked(), false, 'First checkbox tap after editing must not be swallowed');
+  assert.ok((await page.locator('#roster-summary').innerText()).includes('panda renamed'));
+}
+
+async function testAmbiguousPasteOpensEditor(page) {
+  await pasteRelay(page, '#接龙\n周二晚 7-9\n1. A\n2. A\n3. C +1\n4. D');
+  await page.waitForFunction(() => document.getElementById('people-count').textContent.trim() === '4');
+  assert.equal(await page.locator('#roster-editor').evaluate(el => el.open), true);
+  const state = await readState(page);
+  assert.equal(state.people.filter(p => !p.confirmed).length, 3);
+  await page.locator('#mobile-primary').click();
+  assert.equal((await readState(page)).schedule.length, 0, 'Ambiguous candidates must not generate matches');
+}
+
 (async () => {
   const { chromium } = loadPlaywright();
   const browser = await chromium.launch({ executablePath, headless: true });
   try {
-    const cases = [testConflict, testShorterPlayingTime, testMissingTimeSource, testSingleRoundProgress, testSingleRoundAutoAppend, testPartnerRotationAndUpgrade, testSingleCourtFullCoverage, testCollapsedPreviewCopyFallback];
+    const cases = [testPasteRecognizesWithoutManualParse, testSampleRecognizesAndKeepsEditorOptional, testAmbiguousPasteOpensEditor, testConflict, testShorterPlayingTime, testMissingTimeSource, testSingleRoundProgress, testSingleRoundAutoAppend, testPartnerRotationAndUpgrade, testSingleCourtFullCoverage, testCollapsedPreviewCopyFallback];
     for (const run of cases) {
       // Each case owns a new nonpersistent context; user browser data is never accessed.
       const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, reducedMotion: 'reduce' });

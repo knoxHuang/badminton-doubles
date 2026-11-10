@@ -57,3 +57,12 @@ body{width:100%;max-width:480px;min-height:100dvh;margin-inline:auto;box-shadow:
 .round.current{border:2px solid var(--green);padding:12px;background:var(--current-round-bg)}
 .round.current .round-status,.round.current .match-state{background:var(--green);color:var(--current-badge-ink);border-radius:4px;padding-inline:7px}
 .round.current .match{border-color:var(--green)}
+
+/* Simplified local setup preview. */
+#relay-source>summary,#roster-editor>summary{min-height:44px;padding-block:10px;font-size:13px;color:var(--green)}
+#relay-source:not(.parsed)>summary{display:none}
+#relay-source #raw{min-height:144px;max-height:180px;font-size:16px}
+#roster-summary{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+.name-chip{display:inline-block;padding:6px 10px;border-radius:6px;background:var(--soft);font-size:14px;overflow-wrap:anywhere;max-width:100%}
+.name-chip.inactive{color:var(--muted);text-decoration:line-through}.name-chip.unconfirmed{background:var(--warn-bg);color:var(--warn)}
+.setup .settings-title{margin-top:18px;padding-top:18px}.setup .mode-note{display:none}.roster-heading{margin-top:16px}

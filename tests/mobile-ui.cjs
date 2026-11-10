@@ -74,7 +74,12 @@ async function main() {
   }
   async function openDetails(page, selector) {
     const details = page.locator(selector);
-    if (!await details.evaluate(el => el.open)) await details.locator('summary').first().click();
+    const parents = await details.evaluate(el => { const ids = []; for (let p = el.parentElement; p; p = p.parentElement) if (p.tagName === 'DETAILS' && p.id) ids.unshift(p.id); return ids; });
+    for (const id of parents) {
+      const parent = page.locator(`#${id}`);
+      if (!await parent.evaluate(el => el.open)) await parent.locator(':scope > summary').click();
+    }
+    if (!await details.evaluate(el => el.open)) await details.locator(':scope > summary').click();
   }
   async function assertScope(page, expected) {
     await openDetails(page, '#share-preview');
@@ -111,12 +116,14 @@ async function main() {
         assert.equal(await page.locator('.results').isVisible(), true);
       });
       await check(width, 'rename preserves first participation tap', async page => {
+        await openDetails(page, '#roster-editor');
         await page.locator('#roster input[type=text]').first().fill('改名后的球友');
         await tapOnce(page, '#roster input[type=checkbox]', true);
         assert.equal(await page.locator('#roster input[type=checkbox]').first().isChecked(), false,
           'First participation tap after renaming was swallowed');
       });
       await check(width, 'rename preserves keyboard focus navigation', async page => {
+        await openDetails(page, '#roster-editor');
         await page.locator('#roster input[type=text]').first().fill('键盘改名');
         await page.keyboard.press('Tab');
         const focus = await page.evaluate(() => ({ tag: document.activeElement.tagName, type: document.activeElement.type }));
@@ -153,6 +160,7 @@ async function main() {
         assert.ok(Math.abs(await page.evaluate(() => scrollY) - resultsY) <= 3, 'Results scroll position was not restored');
       });
       await check(width, 'small buttons have at least 44px touch targets', async page => {
+        await openDetails(page, '#roster-editor');
         const small = await page.evaluate(() => [...document.querySelectorAll('#sample,#add,#roster .remove,#undo,#export,#import,#clear')].map(el => {
           const r = el.getBoundingClientRect(); return { name: el.id || el.getAttribute('aria-label'), width: r.width, height: r.height };
         }).filter(r => r.width < 43.9 || r.height < 43.9));
@@ -170,6 +178,7 @@ async function main() {
         } finally { await cdp.send('Emulation.setPageScaleFactor', { pageScaleFactor: 1 }); await cdp.detach(); }
       });
       await check(width, 'relay controls keep a 12px vertical gap', async page => {
+        await openDetails(page, '#relay-source');
         const gap = await page.evaluate(() => document.querySelector('#parse').getBoundingClientRect().top - document.querySelector('#raw').getBoundingClientRect().bottom);
         assert.ok(gap >= 11.9, `Relay action gap is only ${gap}px`);
       });
@@ -243,6 +252,7 @@ async function main() {
         }
       });
       await check(width, 'player search filters presentation without changing participation or matches', async page => {
+        await openDetails(page, '#roster-editor');
         const before = await page.evaluate(() => JSON.parse(localStorage.getItem('doubles-club-v1')));
         await page.locator('#player-search').fill('Knox');
         assert.equal(await page.locator('#roster .person:visible').count(), 1);

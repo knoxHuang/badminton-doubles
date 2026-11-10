@@ -21,7 +21,7 @@ async function pageIn(browser) {
   try {
     const owner = await pageIn(browser);
     await owner.page.goto('https://badminton.test/');
-    await owner.page.locator('#sample').click(); await owner.page.locator('#parse').click(); await owner.page.locator('#mobile-primary').click();
+    await owner.page.locator('#sample').click(); await owner.page.locator('#mobile-primary').click();
     await owner.page.evaluate(() => Object.defineProperty(navigator, 'clipboard', { value: { writeText: async text => { window.sharedLink = text; } } }));
     await owner.page.locator('#share-schedule').click();
     await owner.page.waitForFunction(() => !!window.sharedLink);
@@ -32,6 +32,7 @@ async function pageIn(browser) {
     await receiver.context.addInitScript(value => localStorage.setItem('doubles-club-v1', value), privateDraft);
     await receiver.page.goto(link);
     await receiver.page.locator('#view-round').selectOption('all');
+    await receiver.page.locator('#share-preview > summary').click();
     assert.equal(await receiver.page.locator('#output').inputValue(), expected);
     for (const selector of ['#tab-setup', '#mobile-complete', '#append-rounds', '#import', '#clear']) assert.equal(await receiver.page.locator(selector).isVisible(), false, selector);
     assert.equal(await receiver.page.locator('.round-head button').count(), 0);

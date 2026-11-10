@@ -2,6 +2,7 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pathToFileURL } = require('node:url');
 const root = path.join(__dirname, '..');
 const current = require('../package.json').version;
 let playwright;
@@ -10,6 +11,14 @@ catch { playwright = require('/Applications/ChatGPT.app/Contents/Resources/cua_n
 (async () => {
   const browser = await playwright.chromium.launch({ executablePath: process.env.CHROME_EXECUTABLE_PATH || '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true });
   try {
+    const localContext = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+    const localPage = await localContext.newPage();
+    await localPage.goto(pathToFileURL(path.join(root, 'index.html')).href);
+    assert.match(await localPage.locator('.local-label').innerText(), /本地预览/);
+    assert.equal(await localPage.locator('#app-version').innerText(), `v${current}`);
+    assert.equal(JSON.parse(fs.readFileSync(path.join(root, 'version.json'), 'utf8')).version, current);
+    await localContext.close();
+    console.log('PASS local-preview label and unchanged release metadata');
     for (const width of [320, 375, 390, 430]) {
       const context = await browser.newContext({ viewport: { width, height: 844 }, isMobile: true, hasTouch: true });
       const page = await context.newPage();
@@ -41,6 +50,7 @@ catch { playwright = require('/Applications/ChatGPT.app/Contents/Resources/cua_n
       remote = parts.join('.');
       await page.locator('#check-update').click();
       await page.waitForFunction(() => document.getElementById('update-status').textContent.includes('发现新版本'));
+      if (!await page.locator('#relay-source').evaluate(el => el.open)) await page.locator('#relay-source > summary').click();
       await page.locator('#raw').fill('用于验证版本刷新保留的草稿');
       await page.evaluate(() => { window.originalSetItem = Storage.prototype.setItem; Storage.prototype.setItem = () => { throw new Error('blocked'); }; });
       await page.locator('#apply-update').click();
@@ -50,6 +60,7 @@ catch { playwright = require('/Applications/ChatGPT.app/Contents/Resources/cua_n
       await page.evaluate(() => { Storage.prototype.setItem = window.originalSetItem; });
       await page.locator('#apply-update').click();
       await page.waitForURL(`**/?v=${remote}`);
+      if (!await page.locator('#relay-source').evaluate(el => el.open)) await page.locator('#relay-source > summary').click();
       assert.equal(await page.locator('#raw').inputValue(), '用于验证版本刷新保留的草稿');
       await context.close();
       console.log(`PASS ${width}px: version, offline/older/new update, save protection, draft-preserving refresh`);
