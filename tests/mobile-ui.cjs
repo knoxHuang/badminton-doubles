@@ -74,7 +74,28 @@ async function main() {
     assert.ok(await page.locator('#notice').isVisible(), 'Invalid court count should show a notice');
   }
   try {
-    for (const width of [320, 390, 430]) {
+    for (const width of [320, 390, 430, 1280]) {
+      await check(width, 'phone layout stays single-column at every viewport', async page => {
+        const layout = await page.evaluate(() => ({
+          width: document.body.getBoundingClientRect().width,
+          workspace: getComputedStyle(document.querySelector('.workspace')).display,
+          tabs: getComputedStyle(document.querySelector('.view-tabs')).display,
+          setup: getComputedStyle(document.querySelector('.setup')).display,
+          results: getComputedStyle(document.querySelector('.results')).display,
+          action: document.querySelector('.mobile-action').getBoundingClientRect().toJSON(),
+          body: document.body.getBoundingClientRect().toJSON(),
+        }));
+        assert.ok(layout.width <= 480, JSON.stringify(layout));
+        assert.equal(layout.workspace, 'block');
+        assert.equal(layout.tabs, 'grid');
+        assert.notEqual(layout.setup, 'none');
+        assert.equal(layout.results, 'none');
+        assert.ok(Math.abs(layout.action.x - layout.body.x) < 1);
+        assert.ok(Math.abs(layout.action.width - layout.body.width) < 1);
+        await tapOnce(page, '#tab-results');
+        assert.equal(await page.locator('.setup').isVisible(), false);
+        assert.equal(await page.locator('.results').isVisible(), true);
+      });
       await check(width, 'rename preserves first participation tap', async page => {
         await page.locator('#roster input[type=text]').first().fill('改名后的球友');
         await tapOnce(page, '#roster input[type=checkbox]', true);

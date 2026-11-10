@@ -16,10 +16,8 @@
     $('tab-setup').setAttribute('aria-pressed', String(view === 'setup'));
     $('tab-results').setAttribute('aria-pressed', String(view === 'results'));
     updateMobileAction();
-    if (window.innerWidth <= 680) {
-      const top = workspace.getBoundingClientRect().top + window.scrollY - document.querySelector('.view-tabs').offsetHeight;
-      window.scrollTo({ top: reset ? top : scrollPositions[view] ?? top, behavior: 'auto' });
-    }
+    const top = workspace.getBoundingClientRect().top + window.scrollY - document.querySelector('.view-tabs').offsetHeight;
+    window.scrollTo({ top: reset ? top : scrollPositions[view] ?? top, behavior: 'auto' });
   }
   function updateMobileAction() {
     const b = $('mobile-primary'), problem = timeProblem();

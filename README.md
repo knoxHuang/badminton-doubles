@@ -2,6 +2,8 @@
 
 纯 HTML、CSS 和 JavaScript 应用。无需安装依赖。
 
+所有屏幕统一使用手机单列布局。宽屏居中显示，界面最大宽度为 480px。名单与设置、赛程与复制通过页签切换，底部主操作栏与界面等宽。
+
 在线使用：[GitHub Pages](https://knoxhuang.github.io/badminton-doubles/)。
 
 打开 `index.html` 即可使用。也可在本目录运行 `npm start`，访问 http://127.0.0.1:4173 。
