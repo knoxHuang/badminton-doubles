@@ -175,6 +175,15 @@ async function main() {
         });
         assert.deepEqual(corners, ['8px', '8px', '8px', '8px']);
       });
+      await check(width, 'partner coverage is complete and readable', async page => {
+        await tapOnce(page, '#tab-results');
+        await tapOnce(page, '.stats summary', true);
+        assert.match(await page.locator('#quality').innerText(), /28\/28/);
+        const rows = await page.locator('#stats-list .stat-row').allTextContents();
+        assert.equal(rows.length, 8);
+        assert.ok(rows.every(text => /搭档 7\/7/.test(text)));
+        assert.ok(await page.locator('#stats-list').evaluate(el => el.scrollWidth <= el.getBoundingClientRect().width + 1));
+      });
     }
   } finally { await browser.close(); }
   const failed = results.filter(r => !r.passed);

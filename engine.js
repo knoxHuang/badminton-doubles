@@ -4,6 +4,7 @@
   const SAMPLE = '#接龙\n周二晚 7-9\n\n1. panda\n2. 茶米\n3. Knox\n4. Syllabear\n5. Reus\n6. 长华\n7. 云朵\n8. 歪西';
   const MAX_PEOPLE = 64;
   const MAX_ROUNDS = 500;
+  const PAIRING_VERSION = 2;
   function id() { return globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`; }
   function parseTime(text) {
     const match = text.match(/(?<!\d)(周[一二三四五六日天]|星期[一二三四五六日天])?\s*(凌晨|早上|上午|中午|下午|晚上|晚)?\s*(\d{1,2})(?:[:：](\d{2}))?\s*(?:点|时)?\s*[-–—~～至到]\s*(凌晨|早上|上午|中午|下午|晚上|晚)?\s*(\d{1,2})(?:[:：](\d{2}))?(?!\d)/);
@@ -102,6 +103,98 @@
     for (let i = result.length - 1; i > 0; i--) { const j = Math.floor(random() * (i + 1)); [result[i], result[j]] = [result[j], result[i]]; }
     return result;
   }
+  // Circle rotations partition every possible partnership into disjoint sets.
+  function partnerRotations(ids) {
+    let ring = [...ids].sort();
+    if (ring.length % 2) ring.push(null);
+    const rounds = [];
+    for (let index = 0; index < ring.length - 1; index++) {
+      const teams = [];
+      for (let i = 0; i < ring.length / 2; i++) {
+        const a = ring[i], b = ring[ring.length - 1 - i];
+        if (a !== null && b !== null) teams.push([a, b]);
+      }
+      rounds.push(teams);
+      ring = [ring[0], ring[ring.length - 1], ...ring.slice(1, -1)];
+    }
+    return rounds;
+  }
+  function rotationPlan(count, capacity, rotations) {
+    const teamsPerRound = capacity * 2;
+    const evenGroups = count % 4 === 0 && (count / 2) % teamsPerRound === 0;
+    const oneBye = count % 4 === 1 && teamsPerRound === (count - 1) / 2;
+    if (!evenGroups && !oneBye) return null;
+    return rotations.flatMap(teams => {
+      const rounds = [];
+      for (let i = 0; i < teams.length; i += teamsPerRound) rounds.push(teams.slice(i, i + teamsPerRound));
+      return rounds;
+    });
+  }
+  function samePartners(round, teams) {
+    const actual = round.matches.flatMap(m => m.teams).map(t => key(...t)).sort();
+    const expected = teams.map(t => key(...t)).sort();
+    return actual.length === expected.length && actual.every((pair, i) => pair === expected[i]);
+  }
+  function lowerCost(a, b) {
+    if (!b) return true;
+    for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] < b[i];
+    return false;
+  }
+  function choosePartners(active, capacity, history, rotations, random) {
+    const slots = capacity * 4;
+    const ordered = [...active].sort((a, b) => history.counts[a.id] - history.counts[b.id]);
+    const cutoff = history.counts[ordered[slots - 1].id];
+    const eligible = new Set(active.filter(p => history.counts[p.id] <= cutoff).map(p => p.id));
+    const mandatory = active.filter(p => history.counts[p.id] < cutoff).map(p => p.id);
+    const frequency = team => history.partners.get(key(...team)) || 0;
+    let bestTeams, bestCost;
+    function consider(teams) {
+      const frequencies = teams.map(frequency);
+      const waiting = teams.flat().reduce((sum, id) => sum + (history.last[id] ?? -1), 0);
+      const cost = [frequencies.filter(n => n > 0).length, frequencies.reduce((a, b) => a + b, 0), frequencies.reduce((a, b) => a + b * b, 0), waiting];
+      if (lowerCost(cost, bestCost)) { bestCost = cost; bestTeams = teams; }
+    }
+    // Deterministic candidates keep coverage progressing even with an unlucky RNG.
+    for (const rotation of rotations) {
+      const available = rotation.filter(t => t.every(id => eligible.has(id)));
+      const covered = new Set(available.flat());
+      if (mandatory.some(id => !covered.has(id))) continue;
+      const required = available.filter(t => t.some(id => mandatory.includes(id)));
+      const optional = shuffled(available.filter(t => !required.includes(t)), random).sort((a, b) => frequency(a) - frequency(b));
+      if (required.length <= capacity * 2 && available.length >= capacity * 2) consider([...required, ...optional.slice(0, capacity * 2 - required.length)]);
+    }
+    // Search across attendance ties, rather than freezing the same group of four.
+    for (let attempt = 0; attempt < 160; attempt++) {
+      const selected = shuffled(active, random).sort((a, b) => history.counts[a.id] - history.counts[b.id]).slice(0, slots).map(p => p.id);
+      const order = shuffled(selected, random), teams = [];
+      for (let i = 0; i < order.length; i += 2) teams.push(order.slice(i, i + 2));
+      consider(teams);
+    }
+    return bestTeams;
+  }
+  function arrangeOpponents(teams, history, random) {
+    let best, bestCost = Infinity;
+    for (let attempt = 0; attempt < 40; attempt++) {
+      const order = shuffled(teams, random), matches = [];
+      let cost = 0;
+      for (let i = 0; i < order.length; i += 2) {
+        for (const a of order[i]) for (const b of order[i + 1]) cost += (history.opponents.get(key(a, b)) || 0) ** 2;
+        matches.push({ court: i / 2 + 1, teams: [order[i].slice(), order[i + 1].slice()] });
+      }
+      if (cost < bestCost) { bestCost = cost; best = matches; }
+      if (cost === 0) break;
+    }
+    return best;
+  }
+  function partnerCoverage(people, schedule) {
+    const active = people.filter(p => p.active), ids = new Set(active.map(p => p.id));
+    const teammates = new Map(active.map(p => [p.id, new Set()]));
+    for (const round of schedule) for (const match of round.matches) for (const [a, b] of match.teams) {
+      if (ids.has(a) && ids.has(b)) { teammates.get(a).add(b); teammates.get(b).add(a); }
+    }
+    const byPlayer = active.map(p => ({ id: p.id, covered: teammates.get(p.id).size, total: active.length - 1 }));
+    return { coveredPairs: byPlayer.reduce((sum, p) => sum + p.covered, 0) / 2, totalPairs: active.length * (active.length - 1) / 2, completePlayers: byPlayer.filter(p => p.covered === p.total).length, byPlayer };
+  }
   function generate(people, settings, locked = [], random = Math.random) {
     const active = validatePeople(people);
     const problem = timeProblem(settings);
@@ -112,33 +205,28 @@
     const schedule = JSON.parse(JSON.stringify(locked));
     const history = stats(people, schedule);
     const capacity = Math.min(settings.courts, Math.floor(active.length / 4));
-    for (let round = locked.length; round < settings.rounds; round++) {
-      // Appearance count is a hard ordering key; waiting time breaks ties.
-      const tie = Object.fromEntries(active.map(p => [p.id, random()]));
-      const selected = [...active].sort((a, b) => history.counts[a.id] - history.counts[b.id] || (history.last[a.id] ?? -1) - (history.last[b.id] ?? -1) || tie[a.id] - tie[b.id]).slice(0, capacity * 4).map(p => p.id);
-      let best, bestCost = Infinity;
-      // Bounded search: avoid expensive exhaustive enumeration on a phone.
-      for (let attempt = 0; attempt < 160; attempt++) {
-        const candidate = shuffled(selected, random), matches = [];
-        let cost = 0;
-        for (let i = 0; i < candidate.length; i += 4) {
-          const [a, b, c, d] = candidate.slice(i, i + 4);
-          cost += 100 * ((history.partners.get(key(a, b)) || 0) ** 2 + (history.partners.get(key(c, d)) || 0) ** 2);
-          for (const x of [a, b]) for (const y of [c, d]) cost += (history.opponents.get(key(x, y)) || 0) ** 2;
-          matches.push({ court: i / 4 + 1, teams: [[a, b], [c, d]] });
-        }
-        if (cost < bestCost) { bestCost = cost; best = matches; }
-        if (cost === 0) break;
-      }
+    const rotations = partnerRotations(active.map(p => p.id));
+    const plan = rotationPlan(active.length, capacity, rotations);
+    const activeIds = new Set(active.map(p => p.id));
+    const coveredPairs = new Set(schedule.flatMap(r => r.matches.flatMap(m => m.teams)).filter(t => t.every(id => activeIds.has(id))).map(t => key(...t)));
+    const totalPairs = active.length * (active.length - 1) / 2;
+    if (settings.roundMode === 'auto' && totalPairs - coveredPairs.size > (MAX_ROUNDS - schedule.length) * capacity * 2) throw new Error(`当前人数与场地无法在 ${MAX_ROUNDS} 轮内搭遍所有人。请增加场地、减少人数，或选择手动轮数安排部分对阵。`);
+    // Locked matches from an older algorithm or a changed roster cannot be rewritten.
+    const exact = plan && schedule.every((r, index) => samePartners(r, plan[index % plan.length]));
+    for (let round = locked.length; round < MAX_ROUNDS && (round < settings.rounds || (settings.roundMode === 'auto' && coveredPairs.size < totalPairs)); round++) {
+      const teams = exact ? plan[round % plan.length] : choosePartners(active, capacity, history, rotations, random);
+      const best = arrangeOpponents(teams, history, random);
       schedule.push({ matches: best });
       for (const match of best) {
         for (const team of match.teams) {
           const pair = key(...team); history.partners.set(pair, (history.partners.get(pair) || 0) + 1);
+          coveredPairs.add(pair);
           for (const player of team) { history.counts[player]++; history.last[player] = round; }
         }
         for (const a of match.teams[0]) for (const b of match.teams[1]) { const pair = key(a, b); history.opponents.set(pair, (history.opponents.get(pair) || 0) + 1); }
       }
     }
+    if (settings.roundMode === 'auto' && coveredPairs.size < totalPairs) throw new Error(`尚有搭档组合未覆盖，已达到 ${MAX_ROUNDS} 轮上限。请增加场地、减少人数，或使用手动轮数。`);
     return schedule;
   }
   function appendRounds(people, settings, schedule, extra = 4, random = Math.random) {
@@ -164,7 +252,7 @@
     return lines.join('\n');
   }
   function emptyState() {
-    return { version: 1, raw: '', parsedRaw: '', timeSource: 'manual', people: [], settings: { title: '羽毛球双打', date: '', time: '', location: '', notes: '', courts: 2, roundMode: 'auto', durationMinutes: 120, matchMinutes: 15, rounds: 12 }, schedule: [], completed: 0, stale: false };
+    return { version: 1, raw: '', parsedRaw: '', timeSource: 'manual', pairingVersion: PAIRING_VERSION, people: [], settings: { title: '羽毛球双打', date: '', time: '', location: '', notes: '', courts: 2, roundMode: 'auto', durationMinutes: 120, matchMinutes: 15, rounds: 12 }, schedule: [], completed: 0, stale: false };
   }
   function readBackup(value) {
     if (!value || value.version !== 1 || !Array.isArray(value.people) || value.people.length > MAX_PEOPLE || !value.settings || !Array.isArray(value.schedule) || value.schedule.length > MAX_ROUNDS) throw new Error('不是有效的活动备份。');
@@ -210,13 +298,14 @@
     const estimate = estimateRounds(settings.durationMinutes, settings.matchMinutes);
     if (oldFormat && settings.roundMode === 'auto') settings.rounds = estimate.totalRounds;
     // A stale backup is allowed, but unsafe unmarked changes must not be shareable.
-    const inconsistent = schedule.length && (timeProblem(settings) || schedule.length !== settings.rounds || schedule.slice(value.completed).some(r => r.matches.some(m => m.court > settings.courts || m.teams.flat().some(id => !people.find(p => p.id === id).active))));
+    const outdatedPairing = value.pairingVersion !== PAIRING_VERSION && schedule.length > value.completed;
+    const inconsistent = schedule.length && (outdatedPairing || timeProblem(settings) || schedule.length !== settings.rounds || schedule.slice(value.completed).some(r => r.matches.some(m => m.court > settings.courts || m.teams.flat().some(id => !people.find(p => p.id === id).active))));
     const raw = typeof value.raw === 'string' ? value.raw.slice(0, 50000) : '';
     const parsedRaw = typeof value.parsedRaw === 'string' ? value.parsedRaw.slice(0, 50000) : raw;
     const timeSource = ['manual', 'relay', 'retained'].includes(value.timeSource) ? value.timeSource : 'manual';
-    return { version: 1, raw, parsedRaw, timeSource, people, settings, schedule, completed: value.completed, stale: Boolean(value.stale || inconsistent) };
+    return { version: 1, raw, parsedRaw, timeSource, pairingVersion: PAIRING_VERSION, people, settings, schedule, completed: value.completed, stale: Boolean(value.stale || inconsistent) };
   }
-  const api = { SAMPLE, MAX_PEOPLE, MAX_ROUNDS, id, parseTime, parseRelay, estimateRounds, timeProblem, generate, appendRounds, stats, groupText, emptyState, readBackup };
+  const api = { SAMPLE, MAX_PEOPLE, MAX_ROUNDS, PAIRING_VERSION, id, parseTime, parseRelay, estimateRounds, timeProblem, generate, appendRounds, stats, partnerCoverage, groupText, emptyState, readBackup };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.Doubles = api;
 })(globalThis);

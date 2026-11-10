@@ -116,12 +116,46 @@ async function testSingleRoundAutoAppend(page) {
   assert.equal(state.schedule.length, 16);
   assert.deepEqual(state.schedule.slice(0, 12), original, 'automatic append must preserve the planned matches');
 }
+async function testPartnerRotationAndUpgrade(page) {
+  await sample(page);
+  await page.locator('#mobile-primary').click();
+  await page.locator('.stats summary').click();
+  assert.match(await page.locator('#quality').innerText(), /28\/28/);
+  const firstCycle = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('doubles-club-v1'));
+    return Doubles.partnerCoverage(state.people, state.schedule.slice(0, 7));
+  });
+  assert.equal(firstCycle.completePlayers, 8);
+  assert.ok(firstCycle.byPlayer.every(p => p.covered === 7));
+  for (let i = 0; i < 3; i++) await page.locator('.round-head button').click();
+  const locked = (await readState(page)).schedule.slice(0, 3);
+  await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('doubles-club-v1'));
+    delete state.pairingVersion;
+    localStorage.setItem('doubles-club-v1', JSON.stringify(state));
+  });
+  await page.reload();
+  assert.equal(await page.locator('#copy').isDisabled(), true);
+  assert.match(await page.locator('#notice-text').innerText(), /轮转规则已更新/);
+  await page.locator('#mobile-primary').click();
+  assert.deepEqual((await readState(page)).schedule.slice(0, 3), locked);
+  assert.equal((await readState(page)).stale, false);
+}
+async function testSingleCourtFullCoverage(page) {
+  await sample(page);
+  await change(page, '#courts', 1);
+  assert.equal(await page.locator('#rounds').inputValue(), '14');
+  await page.locator('#mobile-primary').click();
+  assert.equal((await readState(page)).schedule.length, 14);
+  await page.locator('.stats summary').click();
+  assert.match(await page.locator('#quality').innerText(), /28\/28/);
+}
 
 (async () => {
   const { chromium } = loadPlaywright();
   const browser = await chromium.launch({ executablePath, headless: true });
   try {
-    const cases = [testConflict, testShorterPlayingTime, testMissingTimeSource, testSingleRoundProgress, testSingleRoundAutoAppend];
+    const cases = [testConflict, testShorterPlayingTime, testMissingTimeSource, testSingleRoundProgress, testSingleRoundAutoAppend, testPartnerRotationAndUpgrade, testSingleCourtFullCoverage];
     for (const run of cases) {
       // Each case owns a new nonpersistent context; user browser data is never accessed.
       const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });

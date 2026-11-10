@@ -39,3 +39,4 @@ body{width:100%;max-width:480px;min-height:100dvh;margin-inline:auto;box-shadow:
 .topbar,main{max-width:100%}
 .mobile-action{left:50%;right:auto;transform:translateX(-50%);width:100%;max-width:480px}
 .notice{width:min(448px,calc(100% - 32px))}
+.stat-row{gap:8px}.stat-row>span:last-child{white-space:nowrap;font-variant-numeric:tabular-nums}

@@ -38,17 +38,17 @@
           <p id="round-estimate" class="wide estimate-note" aria-live="polite"></p>
           <label class="wide">群通知备注（选填）<input id="notes" maxlength="200" placeholder="请按轮次上场，以现场通知为准。"></label>
         </div>
-        <p class="mode-note">自由双打轮转 · 一次生成多轮<br>优先均衡上场次数，再减少重复搭档和对手。</p>
+        <p class="mode-note">自由双打轮转 · 一次生成多轮<br>逐一轮换搭档，兼顾上场次数均衡。新赛程八人两块场地，七轮搭遍其他人。</p>
         <button id="generate" class="primary full">生成多轮赛程 <span aria-hidden="true">↗</span></button>
       </section>
       <section class="results" aria-label="赛程与群通知">
         <div class="section-title"><span class="step">03</span><h2>今天，怎么打</h2><span id="schedule-meta" class="hint"></span></div>
         <div id="empty" class="empty"><span class="empty-number">LOVE<br>ALL.</span><h3>第一场，从一份接龙开始。</h3><p>识别名单，设置场地和轮数。<br>这里会出现每轮对阵。</p></div>
         <div id="schedule-section" hidden>
-          <div id="stale" class="warning" hidden>名单或设置已变更。请重新生成后，再复制群通知。</div>
+          <div id="stale" class="warning" hidden>名单、设置或轮转规则已变更。请重新生成后，再复制群通知。</div>
           <div class="summary-strip"><span><strong id="stat-people">0</strong> 人参与</span><span><strong id="stat-rounds">0</strong> 轮比赛</span><span><strong id="stat-matches">0</strong> 场对阵</span></div>
           <label class="round-filter">查看轮次<select id="view-round"><option value="all">全部轮次</option></select></label><div id="schedule"></div><button id="append-rounds" class="secondary full">再补 4 轮 · 保留现有对阵</button>
-          <details class="stats"><summary>查看上场次数与搭档重复</summary><p id="quality" class="hint"></p><div id="stats-list"></div></details>
+          <details class="stats"><summary>查看上场次数与搭档覆盖进度</summary><p id="quality" class="hint"></p><div id="stats-list"></div></details>
           <div class="share"><div class="row space"><h3>带到微信群</h3><label class="scope-label">复制范围<select id="scope"><option value="all">完整赛程</option></select></label></div><label for="output" class="sr-only">微信群通知文本</label><textarea id="output" readonly rows="10" spellcheck="false"></textarea><button id="copy" class="primary full">复制群通知</button><p class="hint">复制后粘贴到微信群发送。</p></div>
         </div>
       </section>

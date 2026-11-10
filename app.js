@@ -53,11 +53,11 @@
       }, true, { keepRoster: true }));
       const remove = button('×', 'remove', () => {
         const played = state.schedule.some(r => r.matches.some(m => m.teams.flat().includes(p.id)));
-        if (played) { mutate(() => { p.active = false; }, true); notify('此人已有赛程记录，已保留记录并移出后续比赛。'); }
-        else mutate(() => { state.people = state.people.filter(person => person.id !== p.id); }, true);
+        if (played) { mutate(() => { p.active = false; recalculateRounds(); }, true); notify('此人已有赛程记录，已保留记录并移出后续比赛。'); }
+        else mutate(() => { state.people = state.people.filter(person => person.id !== p.id); recalculateRounds(); }, true);
       });
       remove.setAttribute('aria-label', `移除 ${p.name || '参赛者'}`);
-      row.append(node('span', 'person-index', String(index + 1).padStart(2, '0')), name, toggle('参与', p.active, checked => mutate(() => { p.active = checked; }, true, { keepRoster: true })), remove);
+      row.append(node('span', 'person-index', String(index + 1).padStart(2, '0')), name, toggle('参与', p.active, checked => mutate(() => { p.active = checked; recalculateRounds(); }, true, { keepRoster: true })), remove);
       item.append(row);
       if (p.note) item.append(node('p', 'person-note', p.note));
       if (p.note || !p.confirmed) item.append(toggle('已核对为一位独立参赛者', p.confirmed, checked => mutate(() => { p.confirmed = checked; }, true, { keepRoster: true }), 'confirm-label'));
@@ -92,13 +92,16 @@
     const s = E.stats(state.people, state.schedule), activeCounts = state.people.filter(p => p.active).map(p => s.counts[p.id] || 0);
     const repeats = [...s.partners.values()].reduce((n, count) => n + Math.max(0, count - 1), 0);
     const diff = activeCounts.length ? Math.max(...activeCounts) - Math.min(...activeCounts) : 0;
-    $('quality').textContent = `当前参与者上场次数相差 ${diff} 场。重复搭档累计 ${repeats} 次。搭档与对手采用有限搜索，不保证全局最优。`;
+    const coverage = E.partnerCoverage(state.people, state.schedule);
+    const playerCoverage = new Map(coverage.byPlayer.map(p => [p.id, p]));
+    $('quality').textContent = `预排赛程已覆盖 ${coverage.coveredPairs}/${coverage.totalPairs} 种搭档组合，${coverage.completePlayers}/${activeCounts.length} 人已排到与所有其他人搭档。上场次数相差 ${diff} 场，重复搭档累计 ${repeats} 次。轮数不足时，可继续补轮。`;
     const stats = $('stats-list'); stats.replaceChildren();
     const max = Math.max(1, ...Object.values(s.counts));
     state.people.forEach(p => {
       const row = node('div', 'stat-row'), bar = node('span', 'stat-bar'), fill = node('i');
       fill.style.width = `${(s.counts[p.id] || 0) / max * 100}%`; bar.setAttribute('aria-hidden', 'true'); bar.append(fill);
-      row.append(node('span', '', p.name + (p.active ? '' : '（已退出）')), bar, node('span', '', `${s.counts[p.id] || 0} 场`)); stats.append(row);
+      const c = playerCoverage.get(p.id);
+      row.append(node('span', '', p.name + (p.active ? '' : '（已退出）')), bar, node('span', '', `${s.counts[p.id] || 0} 场${c ? ` · 搭档 ${c.covered}/${c.total}` : ''}`)); stats.append(row);
     });
     const scope = $('scope'), oldScope = scope.value; scope.replaceChildren(new Option('完整赛程', 'all'));
     state.schedule.forEach((_, i) => scope.add(new Option(`第 ${i + 1} 轮`, String(i))));
@@ -119,7 +122,10 @@
   function recalculateRounds() {
     if (state.settings.roundMode === 'auto') {
       const estimate = E.estimateRounds(state.settings.durationMinutes, state.settings.matchMinutes);
-      state.settings.rounds = Math.min(E.MAX_ROUNDS, Math.max(estimate.totalRounds, state.completed ? state.completed + 4 : 1));
+      const count = state.people.filter(p => p.active).length;
+      const teamsPerRound = 2 * Math.min(state.settings.courts, Math.floor(count / 4));
+      const minimumCoverage = teamsPerRound ? Math.ceil(count * (count - 1) / 2 / teamsPerRound) : 0;
+      state.settings.rounds = Math.min(E.MAX_ROUNDS, Math.max(estimate.totalRounds, minimumCoverage, state.completed ? state.completed + 4 : 1));
     }
   }
   function renderEstimate() {
@@ -139,7 +145,8 @@
       const e = E.estimateRounds(state.settings.durationMinutes, state.settings.matchMinutes), people = state.people.filter(p => p.active).length;
       const matches = Math.min(Number(state.settings.courts), Math.floor(people / 4));
       const perPerson = people >= 4 ? `每人预计约 ${(e.estimatedRounds * matches * 4 / people).toFixed(1)} 场。` : '识别名单后显示每人预计场次。';
-      $('round-estimate').textContent = `预计正常打 ${e.estimatedRounds} 轮，预排 ${state.settings.rounds} 轮（含备用）。${perPerson}平均用时含换场和短休，多块场地同时比赛算一轮。到时间就停止，无需全部打完。`;
+      const coverageHint = matches ? `搭遍其他人至少需 ${Math.ceil(people * (people - 1) / 2 / (matches * 2))} 轮，特殊人数可能需要更多轮次。` : '';
+      $('round-estimate').textContent = `预计正常打 ${e.estimatedRounds} 轮，预排至少 ${state.settings.rounds} 轮（含备用）。${perPerson}${coverageHint}生成时会补足搭档覆盖，最多 ${E.MAX_ROUNDS} 轮。平均用时含换场和短休。到时间就停止，无需全部打完。`;
     } catch (error) { $('round-estimate').textContent = error.message; }
     $('append-rounds').disabled = state.stale || pendingRelay() || Boolean(problem) || state.schedule.length >= E.MAX_ROUNDS;
   }
@@ -186,7 +193,7 @@
   });
   $('add').addEventListener('click', () => {
     if (state.people.length >= E.MAX_PEOPLE) { notify(`最多支持 ${E.MAX_PEOPLE} 位参赛者。`, true); return; }
-    mutate(() => state.people.push({ id: E.id(), name: '', active: true, confirmed: true, note: '' }), true);
+    mutate(() => { state.people.push({ id: E.id(), name: '', active: true, confirmed: true, note: '' }); recalculateRounds(); }, true);
     $('roster').lastElementChild.querySelector('input').focus();
   });
   for (const field of Object.keys(state.settings)) $(field).addEventListener('change', () => {
@@ -201,7 +208,7 @@
       if (field === 'time' || field === 'durationMinutes') state.timeSource = 'manual';
       if (field === 'roundMode' && value === 'manual' && manualRounds !== null) state.settings.rounds = manualRounds;
       if (field === 'time') { const parsed = E.parseTime(value); if (parsed) { state.settings.time = parsed.time; state.settings.durationMinutes = parsed.durationMinutes; } }
-      if (['roundMode','durationMinutes','matchMinutes','time'].includes(field)) recalculateRounds();
+      if (['roundMode','durationMinutes','matchMinutes','time','courts'].includes(field)) recalculateRounds();
     }, ['courts','rounds','roundMode','durationMinutes','matchMinutes','time'].includes(field));
   });
   $('append-rounds').addEventListener('click', () => {
@@ -213,7 +220,7 @@
     if (state.raw !== state.parsedRaw && !state.completed) { notify('接龙原文已修改。请先重新识别并核对名单，再生成赛程。', true); return; }
     try {
       const schedule = E.generate(state.people, state.settings, state.schedule.slice(0, state.completed));
-      mutate(() => { state.schedule = schedule; state.stale = false; });
+      mutate(() => { state.schedule = schedule; state.settings.rounds = schedule.length; state.stale = false; });
       notify(`已生成 ${schedule.length} 轮赛程${state.completed ? `，前 ${state.completed} 轮保持锁定` : ''}。可在下方复制群通知。`);
       setView('results', { reset: true });
     } catch (error) { notify(error.message, true); }
@@ -264,7 +271,14 @@
     if (!window.confirm('清空当前名单、设置和赛程？需要保留时，请先导出备份。')) return;
     mutate(() => { state = E.emptyState(); }); $('source-details').hidden = true; notify('已清空，可点击「撤销」恢复。');
   });
-  try { const saved = localStorage.getItem(storageKey); if (saved) state = E.readBackup(JSON.parse(saved)); }
+  try {
+    const saved = localStorage.getItem(storageKey);
+    if (saved) {
+      const previous = JSON.parse(saved);
+      state = E.readBackup(previous);
+      if (previous.pairingVersion !== E.PAIRING_VERSION && state.schedule.length > state.completed) notify('搭档轮转规则已更新，请重新生成未完成赛程。已完成轮次会保留。');
+    }
+  }
   catch { notify('本机草稿不可用或格式无效。可重新粘贴接龙，或导入备份。', true); }
   render();
 })();

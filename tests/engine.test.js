@@ -39,7 +39,7 @@ test('八人七轮：每人七场，换搭档，群文本没有轮空信息', ()
   const schedule = E.generate(p, settings, [], rng());
   const s = E.stats(p, schedule);
   assert.ok(Object.values(s.counts).every(c => c === 7));
-  assert.ok(s.partners.size >= 20, '应产生多种搭档组合');
+  assert.equal(s.partners.size, 28, '七轮内必须覆盖所有搭档组合');
   const text = E.groupText(p, settings, schedule);
   assert.ok(text.includes('panda') && text.includes('周二 19:00–21:00'));
   assert.ok(!text.includes('轮空'));
@@ -144,4 +144,67 @@ test('时间来源可跨备份保留，旧备份使用手动来源', () => {
   assert.equal(E.readBackup(state).timeSource, 'retained');
   delete state.timeSource;
   assert.equal(E.readBackup(state).timeSource, 'manual');
+});
+test('八人两场地：每七轮完整轮转，补轮继续同一轮转', () => {
+  for (let seed = 1; seed <= 20; seed++) {
+    const p = players(8), settings = { courts: 2, rounds: 12 };
+    const schedule = E.generate(p, settings, [], rng(seed));
+    const first = E.stats(p, schedule.slice(0, 7));
+    assert.equal(first.partners.size, 28);
+    assert.ok([...first.partners.values()].every(n => n === 1));
+    const extended = E.appendRounds(p, settings, schedule, 2, rng(seed + 100));
+    assert.deepEqual(extended.slice(0, 12), schedule);
+    assert.ok([...E.stats(p, extended).partners.values()].every(n => n === 2));
+  }
+});
+test('人数和场地可整齐分组时，完整覆盖后才重复搭档', () => {
+  for (const [n, courts, rounds] of [[4, 1, 3], [5, 1, 5], [8, 1, 14], [9, 2, 9], [12, 1, 33], [12, 3, 11], [16, 2, 30]]) {
+    const p = players(n), schedule = E.generate(p, { courts, rounds }, [], () => 0);
+    const partners = E.stats(p, schedule).partners;
+    assert.equal(partners.size, n * (n - 1) / 2, `${n}人${courts}场地`);
+    assert.ok([...partners.values()].every(count => count === 1));
+  }
+});
+test('特殊人数优先补齐搭档，同时保持上场次数均衡', () => {
+  for (const n of [6, 7, 10, 12, 19, 25]) for (const courts of [1, 2]) {
+    const p = players(n), schedule = E.generate(p, { courts, rounds: 200 }, [], () => 0);
+    const coverage = E.partnerCoverage(p, schedule);
+    assert.equal(coverage.coveredPairs, coverage.totalPairs, `${n}人${courts}场地`);
+    assert.equal(coverage.completePlayers, n);
+    const counts = Object.fromEntries(p.map(player => [player.id, 0]));
+    for (const round of schedule) {
+      for (const match of round.matches) for (const player of match.teams.flat()) counts[player]++;
+      const values = Object.values(counts);
+      assert.ok(Math.max(...values) - Math.min(...values) <= 1);
+    }
+  }
+});
+test('旧轮转结果标为待更新，已完成记录保持不变', () => {
+  const state = E.emptyState(); state.people = players(8);
+  state.schedule = E.generate(state.people, state.settings, [], rng()); state.completed = 3;
+  delete state.pairingVersion;
+  const restored = E.readBackup(state);
+  assert.equal(restored.stale, true);
+  assert.equal(restored.pairingVersion, E.PAIRING_VERSION);
+  const fresh = E.generate(restored.people, restored.settings, restored.schedule.slice(0, 3), rng());
+  assert.deepEqual(fresh.slice(0, 3), state.schedule.slice(0, 3));
+});
+test('自动预排延长到覆盖所有搭档，手动轮数保持用户设置', () => {
+  const p = players(8), settings = { ...E.emptyState().settings, courts: 1 };
+  const auto = E.generate(p, settings, [], rng());
+  assert.equal(auto.length, 14);
+  assert.equal(E.partnerCoverage(p, auto).completePlayers, 8);
+  const manual = E.generate(p, { ...settings, roundMode: 'manual', rounds: 7 }, [], rng());
+  assert.equal(manual.length, 7);
+  assert.ok(E.partnerCoverage(p, manual).completePlayers < 8);
+  for (const n of [6, 7, 10, 12]) {
+    const group = players(n), schedule = E.generate(group, { ...settings, courts: 2 }, [], () => 0);
+    assert.equal(E.partnerCoverage(group, schedule).completePlayers, n);
+  }
+});
+test('无法在活动轮数上限内覆盖时明确提示，仍允许手动排部分对阵', () => {
+  const p = players(64), settings = { ...E.emptyState().settings, courts: 1 };
+  assert.throws(() => E.generate(p, settings), /无法.*500.*搭遍/);
+  const manual = E.generate(p, { ...settings, roundMode: 'manual', rounds: 7 }, [], rng());
+  assert.equal(manual.length, 7);
 });
