@@ -252,7 +252,7 @@
     return lines.join('\n');
   }
   function emptyState() {
-    return { version: 1, raw: '', parsedRaw: '', timeSource: 'manual', pairingVersion: PAIRING_VERSION, people: [], settings: { title: '羽毛球双打', date: '', time: '', location: '', notes: '', courts: 2, roundMode: 'auto', durationMinutes: 120, matchMinutes: 15, rounds: 12 }, schedule: [], completed: 0, stale: false };
+    return { version: 1, raw: '', parsedRaw: '', timeSource: 'manual', pairingVersion: PAIRING_VERSION, people: [], settings: { title: '羽毛球双打', date: '', time: '', location: '', notes: '', courts: 1, roundMode: 'auto', durationMinutes: 120, matchMinutes: 15, rounds: 12 }, schedule: [], completed: 0, stale: false };
   }
   function readBackup(value) {
     if (!value || value.version !== 1 || !Array.isArray(value.people) || value.people.length > MAX_PEOPLE || !value.settings || !Array.isArray(value.schedule) || value.schedule.length > MAX_ROUNDS) throw new Error('不是有效的活动备份。');

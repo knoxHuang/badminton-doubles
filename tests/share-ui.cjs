@@ -40,7 +40,7 @@ async function pageIn(browser) {
     assert.equal(await receiver.page.evaluate(() => localStorage.getItem('doubles-club-v1')), privateDraft);
     await owner.page.locator('#mobile-complete').click();
     await receiver.page.reload();
-    assert.match(await receiver.page.locator('#schedule-meta').innerText(), /0 \/ 12/);
+    assert.match(await receiver.page.locator('#schedule-meta').innerText(), /0 \/ 14/);
     assert.equal(await receiver.page.evaluate(() => localStorage.getItem('doubles-club-v1')), privateDraft);
     await receiver.page.goto('https://badminton.test/#share=broken');
     assert.match(await receiver.page.locator('#shared-description').innerText(), /分享链接无效/);

@@ -44,6 +44,7 @@ async function main() {
     await page.waitForFunction(() => !!globalThis.Doubles && !!document.getElementById('mobile-primary'));
     await page.evaluate(() => {
       const E = globalThis.Doubles, state = E.emptyState();
+      state.settings.courts = 2;
       state.raw = E.SAMPLE;
       state.parsedRaw = state.raw;
       state.people = E.parseRelay(state.raw).people;

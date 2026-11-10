@@ -35,7 +35,7 @@ test('不同人数及场地：同轮不撞人，上场次数差不超过一', ()
   }
 });
 test('八人七轮：每人七场，换搭档，群文本没有轮空信息', () => {
-  const p = E.parseRelay(E.SAMPLE).people, settings = { ...E.emptyState().settings, time: '周二 19:00–21:00', roundMode: 'manual', rounds: 7 };
+  const p = E.parseRelay(E.SAMPLE).people, settings = { ...E.emptyState().settings, time: '周二 19:00–21:00', courts: 2, roundMode: 'manual', rounds: 7 };
   const schedule = E.generate(p, settings, [], rng());
   const s = E.stats(p, schedule);
   assert.ok(Object.values(s.counts).every(c => c === 7));
@@ -71,7 +71,7 @@ test('输入边界：拒绝不足四人、未确认、同名、非法轮数和�
   assert.throws(() => E.generate(players(4), { courts: 1, rounds: 1 }, schedule), /已完成/);
 });
 test('备份往返、待更新状态，拒绝损坏文件和同轮重复参赛', () => {
-  const state = E.emptyState(); state.people = players(8); state.schedule = E.generate(state.people, state.settings, [], rng());
+  const state = E.emptyState(); state.settings.courts = 2; state.people = players(8); state.schedule = E.generate(state.people, state.settings, [], rng());
   assert.deepEqual(E.readBackup(JSON.parse(JSON.stringify(state))), state);
   const broken = JSON.parse(JSON.stringify(state)); broken.schedule[0].matches[0].teams[0][0] = 'missing';
   assert.throws(() => E.readBackup(broken), /不存在/);
@@ -105,7 +105,7 @@ test('120分钟按平均用时估算，并至少预留四轮', () => {
   for (const average of [0, 2, 121, NaN]) assert.throws(() => E.estimateRounds(120, average), /平均/);
 });
 test('追加轮次保留所有已有对阵，并继续均衡场次', () => {
-  const p = players(9), settings = { ...E.emptyState().settings };
+  const p = players(9), settings = { ...E.emptyState().settings, courts: 2 };
   const initial = E.generate(p, settings, [], rng());
   const extended = E.appendRounds(p, settings, initial, 4, rng(7));
   assert.equal(extended.length, 16);
@@ -119,7 +119,7 @@ test('追加轮次保留所有已有对阵，并继续均衡场次', () => {
 test('旧版七轮草稿转为自动预排，进行中的旧活动保留手动设置', () => {
   const state = E.emptyState();
   state.settings = { title: '羽毛球双打', date: '', time: '周二 19:00–21:00', location: '', notes: '', courts: 2, rounds: 7 };
-  state.people = players(8); state.schedule = E.generate(state.people, state.settings, [], rng());
+  state.settings.courts = 2; state.people = players(8); state.schedule = E.generate(state.people, state.settings, [], rng());
   const updated = E.readBackup(state);
   assert.equal(updated.settings.roundMode, 'auto');
   assert.equal(updated.settings.rounds, 12); assert.equal(updated.stale, true);
@@ -180,7 +180,7 @@ test('特殊人数优先补齐搭档，同时保持上场次数均衡', () => {
   }
 });
 test('旧轮转结果标为待更新，已完成记录保持不变', () => {
-  const state = E.emptyState(); state.people = players(8);
+  const state = E.emptyState(); state.settings.courts = 2; state.people = players(8);
   state.schedule = E.generate(state.people, state.settings, [], rng()); state.completed = 3;
   delete state.pairingVersion;
   const restored = E.readBackup(state);
@@ -209,7 +209,7 @@ test('无法在活动轮数上限内覆盖时明确提示，仍允许手动排�
   assert.equal(manual.length, 7);
 });
 test('分享快照保持完整对阵与进度，不携带原始接龙', () => {
-  const state = E.emptyState(); state.people = E.parseRelay(E.SAMPLE).people;
+  const state = E.emptyState(); state.settings.courts = 2; state.people = E.parseRelay(E.SAMPLE).people;
   state.raw = state.parsedRaw = '原始接龙私有内容';
   state.schedule = E.generate(state.people, state.settings, [], rng()); state.completed = 3;
   const encoded = E.encodeSnapshot(state), shared = E.decodeSnapshot(encoded);
@@ -222,7 +222,7 @@ test('分享快照保持完整对阵与进度，不携带原始接龙', () => {
 });
 test('分享拒绝坏链接、重复上场和过长数据', () => {
   for (const input of ['', 'broken', 'a'.repeat(E.MAX_SHARE_LENGTH + 1), '%20']) assert.throws(() => E.decodeSnapshot(input), /分享链接无效/);
-  const state = E.emptyState(); state.people = players(8); state.schedule = E.generate(state.people, state.settings, [], rng());
+  const state = E.emptyState(); state.settings.courts = 2; state.people = players(8); state.schedule = E.generate(state.people, state.settings, [], rng());
   const data = JSON.parse(Buffer.from(E.encodeSnapshot(state), 'base64url').toString('utf8'));
   data.r[0][0][1] = data.r[0][0][2];
   assert.throws(() => E.decodeSnapshot(Buffer.from(JSON.stringify(data)).toString('base64url')), /无效/);

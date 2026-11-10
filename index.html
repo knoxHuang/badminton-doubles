@@ -6,12 +6,12 @@
   <meta name="color-scheme" content="light dark">
   <meta name="description" content="粘贴微信接龙，安排羽毛球自由双打轮转，复制多轮对阵到微信群。">
   <title>换个搭档 · 羽毛球排赛</title>
-  <link rel="stylesheet" href="styles.css?v=1.0.1">
-  <script src="engine.js?v=1.0.1" defer></script>
-  <script src="app.js?v=1.0.1" defer></script>
+  <link rel="stylesheet" href="styles.css?v=1.0.2">
+  <script src="engine.js?v=1.0.2" defer></script>
+  <script src="app.js?v=1.0.2" defer></script>
 </head>
 <body>
-  <header class="topbar"><a class="brand" href="#">换个搭档<span id="app-version" class="app-version" data-version="1.0.1">v1.0.1</span></a><span class="local-label">自由双打 · 本机保存</span></header>
+  <header class="topbar"><a class="brand" href="#">换个搭档<span id="app-version" class="app-version" data-version="1.0.2">v1.0.2</span></a><span class="local-label">自由双打 · 本机保存</span></header>
   <main>
     <div class="intro"><div><h1>接龙变赛程</h1><p class="subline">粘贴名单，轮换搭档，直接开打。</p></div></div>
     <div id="notice" class="notice" role="status" aria-live="polite" hidden><span id="notice-text"></span><button id="notice-dismiss" class="notice-dismiss" type="button" aria-label="关闭提示">×</button></div>
@@ -24,7 +24,7 @@
         <details id="source-details" hidden><summary>查看识别说明</summary><p id="parse-details" class="hint"></p></details>
         <div id="roster-section" hidden><div class="row space roster-heading"><h3>参赛者 <span id="people-count" class="count">0</span></h3><button id="add" class="text-button">＋ 添加</button></div><p class="hint">取消「参与」可移出后续比赛；同名者请修改显示名。已有完成轮次时，请在此增删名单，接龙原文将锁定。</p><label class="sr-only" for="player-search">查找参赛者</label><input id="player-search" type="search" placeholder="查找参赛者" autocomplete="off"><div id="roster"></div><p id="roster-empty" class="hint" hidden>没有匹配的参赛者，请清空搜索后查看全部名单。</p></div>
         <div class="section-title settings-title"><span class="step">02</span><h2>安排这次活动</h2></div>
-        <div class="fields basic-fields"><label>可用场地数<input id="courts" type="number" min="1" max="16" value="2"></label>
+        <div class="fields basic-fields"><label>可用场地数<input id="courts" type="number" min="1" max="16" value="1"></label>
 <label>可打球时长（分钟）<input id="durationMinutes" type="number" min="5" max="720" value="120"></label></div>
         <p id="time-status" class="hint" role="status"></p>
         <details class="plan-details"><summary id="plan-summary">查看排轮说明</summary><p id="round-estimate" class="estimate-note" aria-live="polite"></p></details>
@@ -36,7 +36,7 @@
 <label>平均每场（分钟）<input id="matchMinutes" type="number" min="3" max="120" value="15"></label>
 <label>预排总轮数<input id="rounds" type="number" min="1" max="500" value="12"></label>
 <label class="wide">群通知备注（选填）<input id="notes" maxlength="200" placeholder="请按轮次上场，以现场通知为准。"></label></div></details>
-        <p class="mode-note">自由双打轮转 · 一次生成多轮<br>逐一轮换搭档，兼顾上场次数均衡。新赛程八人两块场地，七轮搭遍其他人。</p>
+        <p class="mode-note">自由双打轮转 · 一次生成多轮<br>逐一轮换搭档，兼顾上场次数均衡。根据人数和场地，补足搭档覆盖。</p>
         <button id="generate" class="primary full">生成多轮赛程 <span aria-hidden="true">↗</span></button>
       </section>
       <section class="results" aria-label="赛程与群通知">

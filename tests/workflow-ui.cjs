@@ -20,6 +20,8 @@ const readState = page => page.evaluate(() => JSON.parse(localStorage.getItem('d
 async function sample(page) {
   await page.locator('#sample').click();
   await page.locator('#parse').click();
+  await page.locator('#courts').fill('2');
+  await page.locator('#courts').blur();
 }
 
 async function openDetails(page, selector) {
