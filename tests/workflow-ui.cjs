@@ -127,7 +127,10 @@ async function testSingleRoundAutoAppend(page) {
   const original = (await readState(page)).schedule;
   await page.locator('#view-round').selectOption('0');
   for (let completed = 1; completed <= 10; completed++) {
+    const readingPosition = await page.evaluate(() => scrollY);
     await page.locator('#mobile-primary').click();
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    assert.ok(Math.abs(await page.evaluate(() => scrollY) - readingPosition) <= 2, 'Completion and automatic append must preserve scroll position');
     assert.equal(await page.locator('#view-round').inputValue(), 'all');
     assert.equal(await page.locator('#schedule .round.current').getAttribute('data-round'), String(completed));
     assert.equal(await readScope(page), 'all');

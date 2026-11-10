@@ -90,7 +90,7 @@
     state.schedule.forEach((round, index) => {
       const section = node('section', `round${index < state.completed ? ' completed' : index === state.completed ? ' current' : ''}`);
       const head = node('div', 'round-head'), title = node('h3', '', `第 ${String(index + 1).padStart(2, '0')} 轮`);
-      if (index < state.completed) title.append(node('small', '', '已完成 · 已锁定'));
+      title.append(node('span', 'round-status', index < state.completed ? '已完成 · 已锁定' : index === state.completed ? '当前比赛 · 进行中' : '待开始'));
       head.append(title);
       if (!sharedView && index === state.completed) { const done = button('标记本轮完成', 'text-button', completeRound); done.disabled = state.stale || pendingRelay(); head.append(done); }
       const list = node('div');
@@ -190,11 +190,14 @@
     if (sharedView || state.completed >= state.schedule.length) return;
     if (state.stale || pendingRelay() || timeProblem()) return;
     try {
+      const scrollTop = window.scrollY;
       let extended = null;
       if (state.settings.roundMode === 'auto' && state.schedule.length - state.completed - 1 <= 2 && state.schedule.length < E.MAX_ROUNDS) extended = E.appendRounds(state.people, state.settings, state.schedule, Math.min(4, E.MAX_ROUNDS - state.schedule.length));
       const added = extended ? extended.length - state.schedule.length : 0;
       mutate(() => { state.completed++; if (extended) { state.schedule = extended; state.settings.rounds = extended.length; } });
-      focusRound(Math.min(state.completed, state.schedule.length - 1));
+      focusedRound = Math.min(state.completed, state.schedule.length - 1);
+      filterRounds();
+      requestAnimationFrame(() => window.scrollTo({ top: scrollTop, behavior: 'auto' }));
       if (added) notify(`本轮已完成，已自动补充后续 ${added} 轮。到时间即可停止。`);
       else if (state.completed === state.schedule.length) notify('全部预排轮次已完成。需要继续时，可点击「再补 4 轮」。');
     } catch (error) { notify(error.message, true); }

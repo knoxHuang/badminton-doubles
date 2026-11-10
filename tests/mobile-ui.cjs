@@ -261,7 +261,17 @@ async function main() {
         assert.match(await page.locator('#mobile-primary').innerText(), /完成.*1|1.*完成/);
         await tapOnce(page, '#round-next');
         assert.equal(await page.locator('#schedule .round:visible').count(), 12);
+        await page.evaluate(() => scrollBy(0, 120)); await settle(page);
+        const beforeCompletion = await page.evaluate(() => scrollY);
         await tapOnce(page, '#mobile-primary');
+        assert.ok(Math.abs(await page.evaluate(() => scrollY) - beforeCompletion) <= 2, 'Completing a round must preserve the reading position');
+        assert.match(await page.locator('.round.current .round-status').innerText(), /当前比赛.*进行中/);
+        const distinction = await page.evaluate(() => {
+          const current = document.querySelector('.round.current'), next = current.nextElementSibling;
+          return { current: getComputedStyle(current).backgroundColor, next: getComputedStyle(next).backgroundColor, border: parseFloat(getComputedStyle(current).borderTopWidth) };
+        });
+        assert.notEqual(distinction.current, distinction.next);
+        assert.ok(distinction.border >= 2);
         assert.equal(await page.locator('#view-round').inputValue(), 'all'); await assertScope(page, 'all');
         assert.equal(await page.locator('#schedule .round.current').getAttribute('data-round'), '1');
         const state = await page.evaluate(() => JSON.parse(localStorage.getItem('doubles-club-v1')));
